@@ -1,0 +1,146 @@
+[
+  {
+    "id": "S01",
+    "task": "Investigate 198.51.100.77 for possible malicious activity and recommend an action.",
+    "ground_truth": "MALICIOUS",
+    "difficulty": "easy",
+    "expected_tools": ["lookup_ip_reputation"],
+    "rationale": "lookup_ip_reputation returns malicious=true, score 99, flagged by VirusTotal, AbuseIPDB, and MalwareBazaarSynthetic -- decisive on a single call."
+  },
+  {
+    "id": "S02",
+    "task": "We saw a burst of outbound traffic to 192.0.2.99 from our edge load balancer. Is this address a known threat?",
+    "ground_truth": "MALICIOUS",
+    "difficulty": "easy",
+    "expected_tools": ["lookup_ip_reputation"],
+    "rationale": "lookup_ip_reputation returns malicious=true, score 95, flagged by VirusTotal, SpamhausSynthetic, and AbuseIPDB -- conclusive on its own."
+  },
+  {
+    "id": "S03",
+    "task": "203.0.113.200 keeps showing up in our CDN access logs. Do we need to block it?",
+    "ground_truth": "BENIGN",
+    "difficulty": "easy",
+    "expected_tools": ["lookup_ip_reputation"],
+    "rationale": "lookup_ip_reputation returns malicious=false, score 0, no flagging sources -- nothing to act on."
+  },
+  {
+    "id": "S04",
+    "task": "A vendor patch process regularly reaches out to 192.0.2.150. Should this be flagged?",
+    "ground_truth": "BENIGN",
+    "difficulty": "easy",
+    "expected_tools": ["lookup_ip_reputation"],
+    "rationale": "lookup_ip_reputation returns malicious=false, score 1, no flagging sources, and a long-established first_seen of 2018-11-03 -- a clean, established address."
+  },
+  {
+    "id": "S05",
+    "task": "A phishing report references the domain secure-login-update.net. Can you confirm whether it's malicious?",
+    "ground_truth": "MALICIOUS",
+    "difficulty": "easy",
+    "expected_tools": ["check_domain_reputation"],
+    "rationale": "check_domain_reputation returns malicious=true, category=phishing, score 96, flagged by VirusTotal and PhishTankSynthetic -- decisive on a single call."
+  },
+  {
+    "id": "S06",
+    "task": "Our vendor just published CVE-2025-90007 for PulseVPN Gateway, which we run at the network edge. How urgently do we need to respond?",
+    "ground_truth": "ESCALATE",
+    "difficulty": "easy",
+    "expected_tools": ["lookup_cve"],
+    "rationale": "lookup_cve returns severity=CRITICAL, cvss_score=9.9, an unauthenticated management-interface auth bypass allowing full device takeover on PulseVPN Gateway 6.0-6.4 -- severity alone is decisive enough to escalate for emergency patching, independent of any IP or log evidence."
+  },
+  {
+    "id": "S07",
+    "task": "Our bastion host bastion-01 logged a wave of failed logins from 203.0.113.45. Characterize the activity and recommend a response.",
+    "ground_truth": "MALICIOUS",
+    "difficulty": "medium",
+    "expected_tools": ["lookup_ip_reputation", "query_logs", "geolocate_ip"],
+    "rationale": "lookup_ip_reputation already flags it malicious (score 93, AbuseIPDB + SpamhausSynthetic); query_logs shows four failed_login attempts for admin/root/administrator/oracle within about five minutes ending in an account lockout (LOG-0004 to LOG-0007), plus an earlier full-range port scan (LOG-0008) -- a textbook brute-force campaign."
+  },
+  {
+    "id": "S08",
+    "task": "Internal telemetry shows 198.51.100.12 sweeping ports across our 10.20.0.0/24 subnet. Assess and recommend next steps.",
+    "ground_truth": "MALICIOUS",
+    "difficulty": "medium",
+    "expected_tools": ["lookup_ip_reputation", "query_logs"],
+    "rationale": "lookup_ip_reputation flags it malicious (score 88); query_logs shows a TCP SYN scan of common web ports and a UDP scan of SNMP with default community strings against the same subnet within an hour of each other (LOG-0012, LOG-0013) -- coordinated reconnaissance, not incidental traffic."
+  },
+  {
+    "id": "S09",
+    "task": "203.0.113.10 is generating periodic small HTTPS requests to an external host. Investigate.",
+    "ground_truth": "MALICIOUS",
+    "difficulty": "medium",
+    "expected_tools": ["lookup_ip_reputation", "query_logs", "check_domain_reputation"],
+    "rationale": "lookup_ip_reputation flags it malicious (score 97); query_logs shows beacon-like connections with a JA3 fingerprint match to a known C2 toolkit and repeated POST requests to cdn-analytics-node7.info/checkin (LOG-0001, LOG-0002); check_domain_reputation confirms that domain is itself a flagged C2 domain (score 98) -- corroborating evidence of active C2 communication."
+  },
+  {
+    "id": "S10",
+    "task": "192.0.2.10 has made several outbound connections in the past day. Is this expected?",
+    "ground_truth": "BENIGN",
+    "difficulty": "medium",
+    "expected_tools": ["lookup_ip_reputation", "query_logs"],
+    "rationale": "lookup_ip_reputation shows malicious=false, score 2; query_logs shows only routine SMTP delivery to a partner mail exchanger and a vendor antivirus signature update (LOG-0018, LOG-0019) -- ordinary mail-relay behavior, nothing resembling an attack pattern."
+  },
+  {
+    "id": "S11",
+    "task": "Our partner-integration address 198.51.100.150 triggered a file_download alert. Do we need to escalate?",
+    "ground_truth": "BENIGN",
+    "difficulty": "medium",
+    "expected_tools": ["lookup_ip_reputation", "query_logs"],
+    "rationale": "lookup_ip_reputation shows malicious=false, score 4; query_logs shows a scheduled API sync call and a routine reconciliation-report download over an authenticated partner session (LOG-0025, LOG-0027) -- expected, contracted integration traffic."
+  },
+  {
+    "id": "S12",
+    "task": "203.0.113.66 has a moderate risk score in our threat feed but nothing definitive. One of our hosts (ws-063) just connected to it -- take a closer look.",
+    "ground_truth": "MALICIOUS",
+    "difficulty": "hard",
+    "expected_tools": ["lookup_ip_reputation", "geolocate_ip", "query_logs", "check_domain_reputation"],
+    "rationale": "lookup_ip_reputation alone is inconclusive (malicious=false, score 58, only GreyNoise); but query_logs shows ws-063 connecting to cdn-analytics-node7.info (LOG-0030), and check_domain_reputation independently confirms that domain is a known C2 domain (malicious=true, category=c2, score 98) -- the cross-reference, not the IP's own score, is what confirms this is malicious."
+  },
+  {
+    "id": "S13",
+    "task": "A workstation (ws-081) downloaded a document that appears to phone home to 198.51.100.33. The IP itself isn't on any blocklist we use. Investigate further.",
+    "ground_truth": "MALICIOUS",
+    "difficulty": "hard",
+    "expected_tools": ["lookup_ip_reputation", "query_logs", "check_domain_reputation"],
+    "rationale": "lookup_ip_reputation is inconclusive on its own (malicious=false, score 61); query_logs shows ws-081 downloading 'quarterly_report_draft.docm' which references datasync-relay.online as its update source and then connecting to that same host (LOG-0032, LOG-0033); check_domain_reputation confirms datasync-relay.online is a flagged malware domain (malicious=true, score 94) -- the document's embedded callback domain is what proves this malicious, not the IP's own reputation."
+  },
+  {
+    "id": "S14",
+    "task": "A failed VPN login was logged from 198.51.100.200. Does this look like a credential attack?",
+    "ground_truth": "BENIGN",
+    "difficulty": "hard",
+    "expected_tools": ["lookup_ip_reputation", "geolocate_ip", "query_logs"],
+    "rationale": "NOTE: this is the dataset's third 'hard' scenario, built via a different cross-referencing mechanism than the two domain cross-reference cases (no third IP-to-malicious-domain pairing exists in the seeded logs without inventing new data -- verified by checking every log detail against every malicious domain and CVE). The event_type alone (failed_login) superficially resembles the brute-force pattern seen elsewhere, but lookup_ip_reputation shows a long-clean history (malicious=false, score 3, first_seen 2020-09-01) at what geolocate_ip identifies as an internal corporate VPN gateway (Example Corp VPN, Denver, US); query_logs shows exactly one failed attempt that succeeded 8 seconds later (LOG-0021), plus a normal multi-hour VPN session (LOG-0022) -- a one-off typo, not an attack. Cross-referencing all three tools is what correctly clears it despite the alarming-looking event type."
+  },
+  {
+    "id": "S15",
+    "task": "192.0.2.77 made one outbound connection to an unfamiliar domain, and one of our hosts downloaded an unsigned utility from an unlisted source around the same time. Is this a compromise?",
+    "ground_truth": "ESCALATE",
+    "difficulty": "ambiguous",
+    "expected_tools": ["lookup_ip_reputation", "query_logs", "check_domain_reputation"],
+    "rationale": "lookup_ip_reputation shows an elevated-but-inconclusive score (44) with zero named flagging sources; query_logs shows only a single low-volume connection to cloudmetrics-stats.io (LOG-0035) and one unsigned-binary download from an unlisted source (LOG-0036); check_domain_reputation shows that domain is itself only 'suspicious' (malicious=false, score 52), not confirmed malicious. Neither side of the evidence clears or convicts it, so the honest call is to escalate for closer review rather than force a verdict."
+  },
+  {
+    "id": "S16",
+    "task": "A user received a link to quickfile-share.top in an unsolicited email. Should we block it as malicious?",
+    "ground_truth": "ESCALATE",
+    "difficulty": "ambiguous",
+    "expected_tools": ["check_domain_reputation"],
+    "rationale": "check_domain_reputation returns malicious=false, category=suspicious, score 47, with zero named flagging sources and a very recent first_seen (2025-08-02) -- a recently-registered domain with a soft suspicion score but no corroborating source or any related IP/log activity in our environment. Not enough to call it malicious, too much to dismiss outright."
+  },
+  {
+    "id": "S17",
+    "task": "Our web filter blocked a connection to cloudmetrics-stats.io. Was that the right call?",
+    "ground_truth": "ESCALATE",
+    "difficulty": "ambiguous",
+    "expected_tools": ["check_domain_reputation"],
+    "rationale": "check_domain_reputation returns malicious=false, category=suspicious, score 52, flagged by only one source (GreyNoise) -- a single weak signal that neither confirms nor rules out malicious intent, warranting a closer look rather than an automatic allow or block decision."
+  },
+  {
+    "id": "S18",
+    "task": "A vulnerability scan turned up CVE-2024-90310 in our Meridian CMS admin panel, with no sign yet that it's been exploited. How should we prioritize it?",
+    "ground_truth": "ESCALATE",
+    "difficulty": "ambiguous",
+    "expected_tools": ["lookup_cve"],
+    "rationale": "lookup_cve shows severity=MEDIUM, cvss_score=5.4 -- a CSRF issue on an admin panel, not an active exploit. Too significant to ignore given the affected component, but not severe enough to treat as a confirmed incident -- the honest call is prioritized remediation/escalation rather than an outright benign or malicious verdict."
+  }
+]
