@@ -105,6 +105,16 @@ class ContextManager:
         self.summarizer = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         self.summarizer_model = "gpt-4o-mini"
 
+        # summarizer_tokens_used: real token cost of summarizer API calls,
+        # accumulated since the last pop_summarizer_tokens() call. In
+        # windowed_summary mode, _refresh_rolling_summary() makes its own
+        # OpenAI request on every update() -- that cost is real money and
+        # real latency, but invisible to agent.py's own token estimate for
+        # the main investigation. benchmark.py needs this folded into
+        # tokens_used, otherwise windowed_summary looks artificially
+        # cheaper than it actually is.
+        self.summarizer_tokens_used: int = 0
+
     # ──────────────────────────────────────────────────────────────
     # PUBLIC API — called by agent.py
     # ──────────────────────────────────────────────────────────────
@@ -343,6 +353,8 @@ Write a concise but evidence-rich summary paragraph (max 300 words):"""
         )
 
         self.rolling_summary = response.choices[0].message.content.strip()
+        if response.usage is not None:
+            self.summarizer_tokens_used += response.usage.total_tokens
 
     # ──────────────────────────────────────────────────────────────
     # HELPERS
@@ -417,6 +429,20 @@ Write a concise but evidence-rich summary paragraph (max 300 words):"""
             "estimated_tokens": self.get_token_estimate()
         }
 
+    def pop_summarizer_tokens(self) -> int:
+        """
+        Returns the real summarizer-API token cost accumulated since the
+        last call to this method, then resets the counter to 0.
+
+        agent.py calls this right after update() so each investigation's
+        reported tokens_used includes the cost of any summarization that
+        update() just triggered (windowed_summary mode only -- always 0
+        in full mode, since _refresh_rolling_summary() never runs there).
+        """
+        used = self.summarizer_tokens_used
+        self.summarizer_tokens_used = 0
+        return used
+
     def reset(self):
         """
         Clears all history. Call between benchmark runs to ensure
@@ -427,3 +453,4 @@ Write a concise but evidence-rich summary paragraph (max 300 words):"""
         self.all_tasks = []
         self.all_outputs = []
         self.rolling_summary = ""
+        self.summarizer_tokens_used = 0

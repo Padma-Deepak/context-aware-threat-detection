@@ -198,6 +198,13 @@ class InvestigationAgent:
         verdict = self._extract_verdict(report)
         tokens_used = self._estimate_tokens(task, report, intermediate_steps)
 
+        # In windowed_summary mode, the update() call above may have just
+        # triggered a real (billed) summarizer API call. Fold its actual
+        # token cost in here so tokens_used reflects the true cost of this
+        # investigation, not just the main agent's own request.
+        if self.context_manager:
+            tokens_used += self.context_manager.pop_summarizer_tokens()
+
         return {
             "task": task,
             "report": report,
@@ -221,8 +228,11 @@ class InvestigationAgent:
 
     def _estimate_tokens(self, task, report, steps) -> int:
         """
-        Rough estimate: 1 token ≈ 4 characters.
-        benchmark.py replaces this with exact counts from OpenAI response headers.
+        Rough estimate of the main agent's own request: 1 token ≈ 4
+        characters (LangChain's AgentExecutor doesn't surface OpenAI's
+        real usage numbers here). investigate() adds the summarizer's
+        exact token usage on top of this via
+        context_manager.pop_summarizer_tokens().
         """
         total_chars = len(task) + len(report)
         for step in steps:
