@@ -110,6 +110,26 @@ class InvestigationAgent:
         # One line change swaps stub for Padma's real server
         self.mcp_server_url = os.getenv("MCP_SERVER_URL", "http://localhost:8000/mcp")
 
+        # Lazily connected on first investigate() call and reused after
+        # that -- a benchmark chain runs investigate() a dozen-plus times
+        # back-to-back, and reconnecting to the same MCP server on every
+        # single call added avoidable latency for no benefit (tool
+        # definitions don't change mid-run).
+        self._tools = None
+
+    async def _get_tools(self):
+        if self._tools is None:
+            mcp_client = MultiServerMCPClient(
+                {
+                    "security-investigation-stub": {
+                        "url": self.mcp_server_url,
+                        "transport": "streamable_http",
+                    }
+                }
+            )
+            self._tools = await mcp_client.get_tools()
+        return self._tools
+
     async def _build_executor(self, tools):
         """
         Builds the LangChain AgentExecutor.
@@ -160,16 +180,7 @@ class InvestigationAgent:
         """
         start_time = time.time()
 
-        mcp_client = MultiServerMCPClient(
-            {
-                "security-investigation-stub": {
-                    "url": self.mcp_server_url,
-                    "transport": "streamable_http",
-                }
-            }
-        )
-
-        tools = await mcp_client.get_tools()
+        tools = await self._get_tools()
         executor = await self._build_executor(tools)
 
         # Get managed history from context_manager
