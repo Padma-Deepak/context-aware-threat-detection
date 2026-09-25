@@ -1,0 +1,6 @@
+langchain==0.3.25
+langchain-openai==0.3.19
+langchain-mcp-adapters==0.1.14
+mcp==1.30.0
+openai==1.82.1
+python-dotenv==1.1.0
