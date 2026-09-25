@@ -4,6 +4,7 @@ __pycache__/
 db/
 scripts/
 scenarios.json
+scenarios_holdout.json
 .git/
 .gitignore
 .dockerignore

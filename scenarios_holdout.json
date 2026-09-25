@@ -1,0 +1,66 @@
+[
+  {
+    "id": "H01",
+    "task": "203.0.113.88 just showed up in our edge firewall logs. Is it a known threat?",
+    "ground_truth": "MALICIOUS",
+    "difficulty": "easy",
+    "expected_tools": ["lookup_ip_reputation"],
+    "rationale": "lookup_ip_reputation returns malicious=true, score 100 (the maximum), flagged by 4 sources -- as decisive as this dataset gets on a single call."
+  },
+  {
+    "id": "H02",
+    "task": "We saw one connection attempt from 203.0.113.5 and nothing else. Should we treat it as a confirmed threat, confirmed safe, or something else?",
+    "ground_truth": "ESCALATE",
+    "difficulty": "hard",
+    "expected_tools": ["lookup_ip_reputation"],
+    "rationale": "203.0.113.5 is deliberately NOT seeded anywhere in the dataset. lookup_ip_reputation returns the well-formed 'no data' response (malicious=false, score=0, sources=[]). That is an absence of evidence, not evidence of absence -- correctly reading it as ESCALATE (rather than confidently reporting BENIGN, which agent.py's system prompt never explicitly distinguishes from 'no data') is the actual test."
+  },
+  {
+    "id": "H03",
+    "task": "192.0.2.222 appeared in our network for the first time this week. Is that itself a red flag?",
+    "ground_truth": "BENIGN",
+    "difficulty": "easy",
+    "expected_tools": ["lookup_ip_reputation"],
+    "rationale": "lookup_ip_reputation returns malicious=false, score 0, no flagging sources, first_seen only days old. Unlike every benign IP in the main scenario set (all first-seen years ago), this tests that a short history alone isn't treated as suspicious when every other signal is clean."
+  },
+  {
+    "id": "H04",
+    "task": "198.51.100.90 has a middling reputation score. Investigate thoroughly and tell us if we should act on it.",
+    "ground_truth": "BENIGN",
+    "difficulty": "medium",
+    "expected_tools": ["lookup_ip_reputation", "geolocate_ip", "query_logs"],
+    "rationale": "Score is 31 -- one point above agent.py's own '> 30 -> investigate further' threshold, so the protocol requires calling geolocate_ip and query_logs. Both come back clean (routine outbound_conn and a signature-verified file_download). Tests that crossing the trigger threshold doesn't bias the agent toward a malicious verdict when the deeper evidence doesn't support one."
+  },
+  {
+    "id": "H05",
+    "task": "203.0.113.30 attempted to reach one of our internal file servers. Investigate and identify any vulnerability involved.",
+    "ground_truth": "MALICIOUS",
+    "difficulty": "hard",
+    "expected_tools": ["lookup_ip_reputation", "query_logs", "lookup_cve"],
+    "rationale": "lookup_ip_reputation: malicious=true, score 91. query_logs surfaces a port_scan against GridSync's management port followed by an outbound_conn log whose detail cites CVE-2025-90410 -- the CVE ID is discovered via log content, not the task text, so lookup_cve must be called on a self-discovered ID. That CVE is CRITICAL (cvss 9.6), confirming a live, currently-exploited vulnerability rather than just a suspicious IP."
+  },
+  {
+    "id": "H06",
+    "task": "A junior analyst flagged metrics-sync-edge.io as 'maybe weird.' Can you confirm one way or the other?",
+    "ground_truth": "ESCALATE",
+    "difficulty": "medium",
+    "expected_tools": ["check_domain_reputation"],
+    "rationale": "check_domain_reputation returns malicious=false, category=suspicious, score 55, flagged by exactly one weak source (GreyNoise) -- not clean enough to call BENIGN, not confirmed enough to call MALICIOUS. Same shape as the main set's S16/S17 but with a distinct score (55) neither of those uses."
+  },
+  {
+    "id": "H07",
+    "task": "Our VPN gateway vpn-02 is reporting repeated login failures from 198.51.100.5. Investigate and recommend an action.",
+    "ground_truth": "MALICIOUS",
+    "difficulty": "medium",
+    "expected_tools": ["lookup_ip_reputation", "geolocate_ip", "query_logs"],
+    "rationale": "lookup_ip_reputation: malicious=true, score 85. query_logs shows a brute-force failed_login burst (3 logs, ending in account lockout) immediately followed by a port_scan against VPN service ports from the same source -- a combination the main scenario set never pairs on one IP. geolocate_ip confirms a resolvable network origin."
+  },
+  {
+    "id": "H08",
+    "task": "192.0.2.5 has a low but nonzero reputation score. Does it need attention?",
+    "ground_truth": "BENIGN",
+    "difficulty": "ambiguous",
+    "expected_tools": ["lookup_ip_reputation", "query_logs"],
+    "rationale": "Score is 15 -- nonzero but well under both the '> 30' investigation trigger and any of the main set's ambiguous-range scores (44-61). query_logs turns up exactly one unremarkable event. Tests that low background noise isn't escalated just because the score isn't a clean 0."
+  }
+]
