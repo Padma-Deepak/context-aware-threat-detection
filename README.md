@@ -195,16 +195,59 @@ Without the latter, `windowed_summary`'s reported cost would look
 artificially lower than it actually is, since the summarizer's own
 `gpt-4o-mini` calls are real, billed requests.
 
+### Held-out evaluation
+
+`scenarios.json` was visible while `SYSTEM_PROMPT` (in `agent/agent.py`) was
+written and while `WINDOW_SIZE` (in `agent/benchmark.py`) was tuned -- so a
+good score on it proves the system was built to fit that exact data, not
+that it generalizes. `scenarios_holdout.json` and `db/seed_holdout.sql` are
+a second, disjoint batch of 8 scenarios / 6 IPs / 1 domain / 1 CVE that
+weren't used to write the prompt or tune anything, covering combinations the
+main set doesn't: a truly unseeded IP (tests that "no data" isn't silently
+treated as "confirmed clean"), a score sitting one point past the system
+prompt's own `> 30` investigation-trigger threshold, a CVE ID discovered
+from log content rather than the task text, and a brute-force + port-scan
+combo on one source.
+
+It's a separate file, and `db/seed_holdout.sql` is **not** wired into
+`docker-compose.yml`'s auto-init -- if it loaded on every `docker compose
+up`, it would just become more data you develop against, defeating the
+point. Load it deliberately, once, when you're ready for a final run:
+
+```bash
+# 1. Load the held-out data into the already-running postgres container
+docker compose exec -T postgres psql -U secinvest -d secinvest \
+    < db/seed_holdout.sql
+
+# 2. Verify its ground truth mechanically (same pattern as verify_scenarios.py)
+DATABASE_URL=postgresql://secinvest:secinvest_local_only@localhost:5432/secinvest \
+    python scripts/verify_scenarios_holdout.py
+
+# 3. Run the benchmark against it instead of scenarios.json
+cd agent
+SCENARIOS_FILE=../scenarios_holdout.json \
+RESULTS_FILE=benchmark_results_holdout.json \
+    python benchmark.py
+```
+
+Do this **once**, at the end. If the results are bad and you go tweak
+`SYSTEM_PROMPT` or `WINDOW_SIZE` in response, the held-out set has become a
+dev set too, and you're back to square one -- you'd need a third, still-fresh
+batch to actually test whatever you just changed.
+
 ## Repo layout
 
 ```
-mcp_server.py, data.py, db.py     MCP server + data access layer
-db/schema.sql, db/seed.sql        Postgres schema and synthetic seed data
-scenarios.json                    18 verified investigation scenarios
-scripts/verify_scenarios.py       Re-verifies scenarios against live data.py
-agent/agent.py                    InvestigationAgent (the tool-calling loop)
-agent/context_manager.py          full vs. windowed_summary context strategies
-agent/benchmark.py                Runs scenarios through both modes, compares
+mcp_server.py, data.py, db.py       MCP server + data access layer
+db/schema.sql, db/seed.sql          Postgres schema and synthetic seed (dev) data
+scenarios.json                      18 verified investigation scenarios (dev set)
+scripts/verify_scenarios.py         Re-verifies scenarios against live data.py
+db/seed_holdout.sql                 Disjoint held-out data (not auto-loaded)
+scenarios_holdout.json              8 held-out scenarios, never used to tune the agent
+scripts/verify_scenarios_holdout.py Re-verifies held-out scenarios against live data.py
+agent/agent.py                      InvestigationAgent (the tool-calling loop)
+agent/context_manager.py            full vs. windowed_summary context strategies
+agent/benchmark.py                  Runs scenarios through both modes, compares
 ```
 
 ## Synthetic data

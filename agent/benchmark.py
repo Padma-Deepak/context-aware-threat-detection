@@ -49,7 +49,16 @@ load_dotenv()
 RUNS_PER_CHAIN = 3          # how many times to run each chain per mode.
 WINDOW_SIZE = 2              # lowered from 5: real scenarios cap at 4 tool
                              # calls, so window_size=5 never triggered summarization
-SCENARIOS_FILE = Path(__file__).parent.parent / "scenarios.json"
+
+# SCENARIOS_FILE / RESULTS_FILE are env-overridable so the held-out set
+# (scenarios_holdout.json) can be run through this same script -- e.g.
+# for a final, one-time evaluation -- without editing this file or
+# clobbering the dev-set results:
+#   SCENARIOS_FILE=../scenarios_holdout.json \
+#   RESULTS_FILE=benchmark_results_holdout.json \
+#   python benchmark.py
+SCENARIOS_FILE = Path(os.getenv("SCENARIOS_FILE", str(Path(__file__).parent.parent / "scenarios.json")))
+RESULTS_FILE = Path(os.getenv("RESULTS_FILE", str(Path(__file__).parent / "benchmark_results.json")))
 
 # Chains group related scenarios so they can share one ContextManager and
 # actually build up history. Grouped by:
@@ -442,10 +451,9 @@ def save_results(all_results: list[RunResult], full_metrics: dict, windowed_metr
         "raw_results": _serialize_raw(all_results)
     }
 
-    output_path = Path(__file__).parent / "benchmark_results.json"
-    with open(output_path, "w") as f:
+    with open(RESULTS_FILE, "w") as f:
         json.dump(output, f, indent=2)
-    print(f"\n  Raw results saved to {output_path}")
+    print(f"\n  Raw results saved to {RESULTS_FILE}")
 
 
 def checkpoint_results(all_results: list[RunResult]):
@@ -470,8 +478,7 @@ def checkpoint_results(all_results: list[RunResult]):
         "raw_results": _serialize_raw(all_results)
     }
 
-    output_path = Path(__file__).parent / "benchmark_results.json"
-    with open(output_path, "w") as f:
+    with open(RESULTS_FILE, "w") as f:
         json.dump(output, f, indent=2)
 
 
