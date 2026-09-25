@@ -1,8 +1,44 @@
-# Security Investigation MCP Server (Synthetic Benchmark)
+# Context-Aware Threat Detection System
 
-This is a **mock security-investigation backend** built for an agent
-benchmark project. It is not a real threat-intelligence feed. Every IP,
-domain, CVE, and log entry in this dataset is fabricated:
+An investigation agent that uses [MCP](https://modelcontextprotocol.io) tools to
+research potential security threats (IPs, domains, CVEs, logs) and produce a
+structured verdict -- plus a benchmark comparing two context-management
+strategies for keeping a long-running tool-using agent cheap without hurting
+its accuracy.
+
+The project has two halves:
+
+1. **MCP server** (`mcp_server.py`, `data.py`, `db.py`, `db/`) -- a synthetic
+   threat-intelligence backend exposing 5 read-only tools over MCP.
+2. **Agent + benchmark** (`agent/`) -- a LangChain tool-calling agent that
+   investigates tasks against those tools, and a benchmark that runs it
+   through 18 scenarios under two different context strategies.
+
+All data is fabricated for this benchmark -- see "Synthetic data" below.
+
+## Quickstart
+
+```bash
+# 1. Start the MCP server + Postgres backend
+docker compose up --build -d
+
+# 2. Set up the agent
+cd agent
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env   # then fill in OPENAI_API_KEY
+
+# 3. Run a single investigation
+python agent.py
+
+# 4. Or run the full benchmark (18 scenarios x 2 context modes x 3 repeats)
+python benchmark.py
+```
+
+## MCP server
+
+A **mock security-investigation backend**. It is not a real threat-intelligence
+feed -- every IP, domain, CVE, and log entry is fabricated:
 
 - IPs are drawn from RFC 5737 documentation/example ranges
   (`192.0.2.0/24`, `198.51.100.0/24`, `203.0.113.0/24`) that IANA
@@ -11,15 +47,11 @@ domain, CVE, and log entry in this dataset is fabricated:
 - CVE records are entirely synthetic (`synthetic: true` on every record)
   and do not correspond to real CVEs.
 
-It exposes 5 read-only tools over the [Model Context Protocol](https://modelcontextprotocol.io)
-so an agent can practice IP/domain reputation lookups, log correlation,
-and CVE lookups against a realistic-shaped but safe dataset.
+### Running it
 
-## Running it
+One command, from the repo root:
 
-One command, from this directory:
-
-```
+```bash
 docker compose up --build
 ```
 
@@ -40,17 +72,17 @@ To run in the background: `docker compose up -d --build`.
 
 To tear down (including the data volume): `docker compose down -v`.
 
-## Verifying it's healthy
+### Verifying it's healthy
 
 Check both containers report healthy/running:
 
-```
+```bash
 docker compose ps
 ```
 
 Check Postgres actually seeded (should show 13/13/8/8/36):
 
-```
+```bash
 docker compose exec postgres psql -U secinvest -d secinvest -c "
 SELECT 'ip_reputation', count(*) FROM ip_reputation
 UNION ALL SELECT 'ip_geolocation', count(*) FROM ip_geolocation
@@ -62,11 +94,11 @@ UNION ALL SELECT 'security_logs', count(*) FROM security_logs;
 
 Check the MCP server is serving:
 
-```
+```bash
 docker compose logs mcp_server
 ```
 
-## Connecting an MCP client
+### Connecting an MCP client
 
 - **Transport:** streamable-http
 - **URL:** `http://localhost:8000/mcp` (or `http://<host>:8000/mcp` if
@@ -85,7 +117,7 @@ async with streamablehttp_client("http://localhost:8000/mcp") as (read, write, _
         result = await session.call_tool("lookup_ip_reputation", {"ip": "203.0.113.10"})
 ```
 
-## Tool contracts
+### Tool contracts
 
 All 5 tools are stable -- names, parameters, and return shapes will not
 change as the storage backend evolves.
@@ -100,3 +132,83 @@ change as the storage backend evolves.
 
 Unknown IPs/domains/CVE IDs are never an error -- each tool returns a
 well-formed zero/null "not found" response instead of raising.
+
+## Agent
+
+`agent/agent.py`'s `InvestigationAgent` connects to the MCP server, discovers
+its 5 tools, and runs a LangChain tool-calling loop (`temperature=0`, up to 10
+tool-call iterations) with a system prompt that enforces an investigation
+order (reputation first, then logs/geolocation/CVE/domain lookups as evidence
+warrants) and a fixed report format ending in a `VERDICT: MALICIOUS|BENIGN|ESCALATE`
+line.
+
+```bash
+cd agent
+cp .env.example .env   # set OPENAI_API_KEY at minimum
+python agent.py
+```
+
+`investigate(task)` returns a dict with the report, the extracted verdict, tool
+call count, an estimated token cost, and wall-clock duration.
+
+## Context-management research
+
+`agent/context_manager.py` is the project's research contribution: an
+implementation of two context strategies from *"Less Context, Better Agents:
+Efficient Context Engineering for Long-Horizon Tool-Using LLM Agents"*
+(Lodha et al., arXiv:2606.10209), so `benchmark.py` can compare them
+experimentally on this workload:
+
+- **`full`** -- every past tool call and result is kept and resent verbatim
+  on every turn (baseline).
+- **`windowed_summary`** -- only the last `window_size` tool call/result
+  pairs are kept verbatim; everything older is compressed into a rolling
+  summary by a cheap model (`gpt-4o-mini`), refreshed after each
+  investigation.
+
+`InvestigationAgent` never knows which mode is active -- it just calls
+`context_manager.get_history()` before each investigation and
+`context_manager.update()` after.
+
+### Running the benchmark
+
+```bash
+cd agent
+python benchmark.py
+```
+
+This groups `scenarios.json`'s 18 scenarios into 3 chains of 6 (so history
+actually accumulates within a chain instead of every scenario starting from
+an empty `ContextManager`), runs each chain 3 times under both `full` and
+`windowed_summary`, and prints a comparison table of verdict accuracy,
+average tokens, average latency, and average tool-call count. Raw results are
+checkpointed to `agent/benchmark_results.json` after every single run (so an
+interrupted benchmark doesn't lose completed work) and finalized with
+`status: "complete"` when it finishes. That file is git-ignored -- it's
+generated output, not part of the repo.
+
+**Token accounting:** `tokens_used` includes both the main agent's own
+request (estimated at ~4 chars/token, since LangChain's `AgentExecutor`
+doesn't surface OpenAI's real usage numbers) *and* the exact token cost of
+any summarizer call `windowed_summary` mode triggered for that investigation.
+Without the latter, `windowed_summary`'s reported cost would look
+artificially lower than it actually is, since the summarizer's own
+`gpt-4o-mini` calls are real, billed requests.
+
+## Repo layout
+
+```
+mcp_server.py, data.py, db.py     MCP server + data access layer
+db/schema.sql, db/seed.sql        Postgres schema and synthetic seed data
+scenarios.json                    18 verified investigation scenarios
+scripts/verify_scenarios.py       Re-verifies scenarios against live data.py
+agent/agent.py                    InvestigationAgent (the tool-calling loop)
+agent/context_manager.py          full vs. windowed_summary context strategies
+agent/benchmark.py                Runs scenarios through both modes, compares
+```
+
+## Synthetic data
+
+Every IP, domain, CVE, and log entry in `db/seed.sql` is fabricated for this
+benchmark -- see the MCP server section above for details. Nothing here
+should be treated as real threat intelligence.
