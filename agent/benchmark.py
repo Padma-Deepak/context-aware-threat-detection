@@ -34,6 +34,7 @@ import json
 import asyncio
 import time
 import os
+import traceback
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -545,8 +546,9 @@ async def main():
         await run_mode(chains, "full", all_results)
         await run_mode(chains, "windowed_summary", all_results)
     except Exception as e:
-        print(f"\n⚠️  Benchmark interrupted: {e}")
-        print(f"   {len(all_results)} run(s) completed and checkpointed to benchmark_results.json.")
+        traceback.print_exc()
+        print(f"\n⚠️  Benchmark interrupted: {e!r}")
+        print(f"   {len(all_results)} run(s) completed and checkpointed to {RESULTS_FILE}.")
         print("   Re-run to continue collecting data (note: this restarts from scratch, it does not resume).")
         return
 
