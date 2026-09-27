@@ -19,6 +19,7 @@
 #   The agent itself never changes — only what history it receives changes.
 
 import os
+import re
 from typing import Literal
 from openai import OpenAI
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, SystemMessage
@@ -114,6 +115,10 @@ class ContextManager:
         # tokens_used, otherwise windowed_summary looks artificially
         # cheaper than it actually is.
         self.summarizer_tokens_used: int = 0
+
+        # summarized_upto: index into all_steps; steps before it are already
+        # folded into rolling_summary.
+        self.summarized_upto: int = 0
 
     # ──────────────────────────────────────────────────────────────
     # PUBLIC API — called by agent.py
@@ -259,30 +264,49 @@ class ContextManager:
         messages = []
 
         # ── PART 1: ROLLING SUMMARY ────────────────────────────
+        # Framed explicitly as CLOSED, SEPARATE cases. The earlier framing
+        # ("Investigation Context") presented other targets' evidence as if
+        # it bore on the current one, and the agent started calling
+        # ambiguous/benign targets MALICIOUS once the summary had filled up
+        # with evidence from earlier malicious cases.
         if self.rolling_summary:
             summary_text = (
-                "## Investigation Context (Summary of Prior Activity)\n\n"
+                "## Earlier investigations (closed, summarized)\n\n"
+                "These are PRIOR, SEPARATE investigations that are already concluded. "
+                "Evidence about other targets is not evidence about the current target; "
+                "only use a line below if the same IP, domain, or CVE shows up in the "
+                "current investigation's own tool results.\n\n"
                 + self.rolling_summary
-                + "\n\n---\n"
-                "The following are the most recent tool interactions verbatim:"
             )
             messages.append(SystemMessage(content=summary_text))
 
         # ── PART 2: RECENT VERBATIM STEPS, WITH TASK BOUNDARIES ─
-        # Take only the last window_size steps, and their originating
-        # task indices, from all_steps / step_task_index.
+        # Each task in the window is opened with its question and closed with
+        # its verdict, so completed cases read as completed -- full mode gets
+        # this for free from the stored final reports.
         recent_steps = self.all_steps[-self.window_size:]
         recent_task_indices = self.step_task_index[-self.window_size:]
 
         last_task_index = None
         for (action, observation), task_index in zip(recent_steps, recent_task_indices):
             if task_index != last_task_index:
+                if last_task_index is not None:
+                    messages.append(AIMessage(content=self._closing_line(last_task_index)))
                 messages.append(HumanMessage(content=self.all_tasks[task_index]))
                 last_task_index = task_index
             tool_message = self._format_step_as_message(action, observation)
             messages.append(AIMessage(content=tool_message))
+        if last_task_index is not None:
+            messages.append(AIMessage(content=self._closing_line(last_task_index)))
 
         return messages
+
+    def _verdict_of(self, task_index: int) -> str:
+        match = re.search(r"VERDICT:\s*(MALICIOUS|BENIGN|ESCALATE)", self.all_outputs[task_index])
+        return match.group(1) if match else "UNKNOWN"
+
+    def _closing_line(self, task_index: int) -> str:
+        return f"[Investigation closed] VERDICT: {self._verdict_of(task_index)}"
 
     def _refresh_rolling_summary(self):
         """
@@ -302,57 +326,52 @@ class ContextManager:
         If total steps <= window_size, everything fits in the window.
         Nothing needs to be summarized yet.
         """
-        # Steps that fall outside the window
-        steps_to_summarize = self.all_steps[:-self.window_size] if len(self.all_steps) > self.window_size else []
-
-        if not steps_to_summarize:
-            # Everything fits in the window — no summary needed yet
-            self.rolling_summary = ""
+        # Only the steps that left the window since the last refresh. The
+        # earlier version re-sent every out-of-window step on every refresh,
+        # so summarizer cost grew with the square of chain length.
+        evict_end = len(self.all_steps) - self.window_size
+        if evict_end <= self.summarized_upto:
             return
 
-        # Build a text representation of the steps to summarize
-        steps_text = self._steps_to_text(steps_to_summarize)
+        new_steps = self.all_steps[self.summarized_upto:evict_end]
+        new_task_indices = self.step_task_index[self.summarized_upto:evict_end]
 
-        # Ask the cheap model to compress them
-        # WHY THIS PROMPT STRUCTURE?
-        # We explicitly tell it to preserve:
-        #   - Employee identity (who we're investigating)
-        #   - Concrete evidence (IPs, timestamps, bytes, locations)
-        #   - Flags already raised (what's suspicious)
-        #   - What tools have already been called (so we don't repeat)
-        # Generic summarization ("IP appears suspicious") loses evidence.
-        # Security investigations need the specific numbers.
-        prompt = f"""You are summarizing the history of a security investigation for an AI agent.
+        blocks = []
+        for task_index in dict.fromkeys(new_task_indices):
+            task_steps = [s for s, t in zip(new_steps, new_task_indices) if t == task_index]
+            blocks.append(
+                f"Investigation #{task_index + 1}\n"
+                f"Question: {self.all_tasks[task_index]}\n"
+                f"{self._steps_to_text(task_steps)}"
+                f"Final verdict: {self._verdict_of(task_index)}"
+            )
 
-The agent is mid-investigation and needs a compact summary of what has been found so far.
+        prompt = f"""You maintain a compact log of a security analyst agent's COMPLETED investigations, so it can remember them cheaply.
 
-CRITICAL: Preserve all concrete evidence:
-- Specific IP addresses
-- Exact timestamps and time gaps
-- Byte counts and record counts  
-- City/country names for geolocation
-- Role names and permission actions
-- Which tools have already been called
+Write exactly one line per investigation, in this form:
+- #N [target IP/domain/CVE] -> VERDICT. Evidence: <specific facts: scores, flagging sources, country/ASN, event types and counts, related domains/CVEs>.
 
-Do NOT write vague summaries like "the IP appeared suspicious."
-Write specific summaries like "IP 185.220.101.5 scored 92/100, flagged by VirusTotal and AbuseIPDB, geolocated to Russia (AS45102)."
+Rules:
+- Keep exact identifiers (IPs, domains, CVE IDs) and numbers.
+- Never merge different investigations into one line, and never carry evidence from one target onto another.
+- If the existing log already has a line for an investigation number below, rewrite that line to include the new facts instead of adding a second one.
+- Output only the full updated log.
 
-Investigation steps to summarize:
-{steps_text}
+Existing log:
+{self.rolling_summary or "(empty)"}
 
-Existing summary to update (if any):
-{self.rolling_summary if self.rolling_summary else "None — this is the first summary."}
-
-Write a concise but evidence-rich summary paragraph (max 300 words):"""
+Newly completed investigations to add:
+{chr(10).join(blocks)}"""
 
         response = self.summarizer.chat.completions.create(
             model=self.summarizer_model,
             messages=[{"role": "user", "content": prompt}],
-            temperature=0,      # deterministic — same input = same summary
-            max_tokens=400
+            temperature=0,
+            max_tokens=1200
         )
 
         self.rolling_summary = response.choices[0].message.content.strip()
+        self.summarized_upto = evict_end
         if response.usage is not None:
             self.summarizer_tokens_used += response.usage.total_tokens
 
@@ -454,3 +473,4 @@ Write a concise but evidence-rich summary paragraph (max 300 words):"""
         self.all_outputs = []
         self.rolling_summary = ""
         self.summarizer_tokens_used = 0
+        self.summarized_upto = 0
