@@ -3,3 +3,4 @@ __pycache__/
 *.pyc
 .env
 agent/benchmark_results*.json
+agent/*.log
