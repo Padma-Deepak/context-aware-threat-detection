@@ -187,13 +187,16 @@ interrupted benchmark doesn't lose completed work) and finalized with
 `status: "complete"` when it finishes. That file is git-ignored -- it's
 generated output, not part of the repo.
 
-**Token accounting:** `tokens_used` includes both the main agent's own
-request (estimated at ~4 chars/token, since LangChain's `AgentExecutor`
-doesn't surface OpenAI's real usage numbers) *and* the exact token cost of
-any summarizer call `windowed_summary` mode triggered for that investigation.
-Without the latter, `windowed_summary`'s reported cost would look
-artificially lower than it actually is, since the summarizer's own
-`gpt-4o-mini` calls are real, billed requests.
+**Token accounting:** `tokens_used` is OpenAI-reported usage for every LLM
+call in the agent loop, which includes the history re-sent on each call,
+plus the usage of any summarizer call `windowed_summary` made for that
+investigation. Counting both sides this way is what makes the two modes
+comparable.
+
+`LONG_CHAIN=1` runs a whole scenario file as one chain so history keeps
+growing, and `RUNS_PER_CHAIN` sets the number of repeats.
+
+**Results:** see [RESULTS.md](RESULTS.md).
 
 ### Held-out evaluation
 
