@@ -22,6 +22,7 @@ from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from langchain.agents import AgentExecutor, create_tool_calling_agent
 from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.callbacks import UsageMetadataCallbackHandler
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
 load_dotenv()
@@ -99,12 +100,16 @@ class InvestigationAgent:
         # max_retries: the OpenAI SDK backs off and retries on 429s
         # (rate limit) automatically. Default of 2 isn't enough headroom
         # for a benchmark hammering a low-TPM-tier org back-to-back.
+        # stream_usage=True: AgentExecutor streams the model, and without
+        # this OpenAI omits usage from streamed responses, so the real
+        # token counts investigate() relies on would silently be 0.
         self.llm = ChatOpenAI(
             model=os.getenv("OPENAI_MODEL", "gpt-4o"),
             temperature=0,
             api_key=os.getenv("OPENAI_API_KEY"),
             max_retries=8,
-            timeout=120
+            timeout=120,
+            stream_usage=True
         )
 
         # One line change swaps stub for Padma's real server
@@ -173,7 +178,9 @@ class InvestigationAgent:
                 "report": str,
                 "verdict": str,          # MALICIOUS / BENIGN / ESCALATE / UNKNOWN
                 "tool_calls": int,
-                "tokens_used": int,
+                "tokens_used": int,          # real agent tokens + summarizer tokens
+                "agent_input_tokens": int,   # prompt tokens across the agent loop
+                "summarizer_tokens": int,
                 "duration_seconds": float,
                 "intermediate_steps": list
             }
@@ -189,39 +196,39 @@ class InvestigationAgent:
         if self.context_manager:
             chat_history = self.context_manager.get_history()
 
-        response = await executor.ainvoke({
-            "input": task,
-            "chat_history": chat_history
-        })
+        # Real usage reported by OpenAI for every LLM call in the loop. Each
+        # call re-sends the system prompt, tool schemas, AND chat_history,
+        # so this is where the cost of carrying history actually shows up.
+        usage = UsageMetadataCallbackHandler()
+        response = await executor.ainvoke(
+            {"input": task, "chat_history": chat_history},
+            config={"callbacks": [usage]},
+        )
+        agent_tokens = sum(u.get("total_tokens", 0) for u in usage.usage_metadata.values())
+        input_tokens = sum(u.get("input_tokens", 0) for u in usage.usage_metadata.values())
 
         # Update context manager with what just happened
+        summarizer_tokens = 0
         if self.context_manager:
             self.context_manager.update(
                 task=task,
                 steps=response.get("intermediate_steps", []),
                 output=response["output"]
             )
+            summarizer_tokens = self.context_manager.pop_summarizer_tokens()
 
         duration = time.time() - start_time
         report = response["output"]
         intermediate_steps = response.get("intermediate_steps", [])
-        tool_call_count = len(intermediate_steps)
-        verdict = self._extract_verdict(report)
-        tokens_used = self._estimate_tokens(task, report, intermediate_steps)
-
-        # In windowed_summary mode, the update() call above may have just
-        # triggered a real (billed) summarizer API call. Fold its actual
-        # token cost in here so tokens_used reflects the true cost of this
-        # investigation, not just the main agent's own request.
-        if self.context_manager:
-            tokens_used += self.context_manager.pop_summarizer_tokens()
 
         return {
             "task": task,
             "report": report,
-            "verdict": verdict,
-            "tool_calls": tool_call_count,
-            "tokens_used": tokens_used,
+            "verdict": self._extract_verdict(report),
+            "tool_calls": len(intermediate_steps),
+            "tokens_used": agent_tokens + summarizer_tokens,
+            "agent_input_tokens": input_tokens,
+            "summarizer_tokens": summarizer_tokens,
             "duration_seconds": round(duration, 2),
             "intermediate_steps": intermediate_steps
         }
@@ -236,20 +243,6 @@ class InvestigationAgent:
         if match:
             return match.group(1)
         return "UNKNOWN"
-
-    def _estimate_tokens(self, task, report, steps) -> int:
-        """
-        Rough estimate of the main agent's own request: 1 token ≈ 4
-        characters (LangChain's AgentExecutor doesn't surface OpenAI's
-        real usage numbers here). investigate() adds the summarizer's
-        exact token usage on top of this via
-        context_manager.pop_summarizer_tokens().
-        """
-        total_chars = len(task) + len(report)
-        for step in steps:
-            action, observation = step
-            total_chars += len(str(action)) + len(str(observation))
-        return total_chars // 4
 
 
 # ──────────────────────────────────────────────────────────────
