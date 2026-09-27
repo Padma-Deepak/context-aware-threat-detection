@@ -22,7 +22,7 @@ import os
 import re
 from typing import Literal
 from openai import OpenAI
-from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, SystemMessage
+from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, SystemMessage, ToolMessage
 
 # ──────────────────────────────────────────────────────────────
 # WHAT IS A "STEP"?
@@ -184,32 +184,29 @@ class ContextManager:
 
         Structure sent to LLM each turn:
             [HumanMessage(task_1),
-             AIMessage(tool_call_1 + result_1),
-             AIMessage(tool_call_2 + result_2),
+             AIMessage(tool_calls=[call_1]), ToolMessage(result_1),
+             AIMessage(tool_calls=[call_2]), ToolMessage(result_2),
              ...
              AIMessage(final_report_1),
              HumanMessage(task_2),
              ...]
 
-        WHY AIMESSAGE FOR TOOL RESULTS?
-        Tool calls and their results are part of the assistant's
-        reasoning trace. Wrapping them as AIMessages keeps the
-        conversation structure valid for the LLM.
+        WHY NATIVE TOOL-CALL MESSAGES?
+        Past tool calls used to be rendered as plain-text AIMessages
+        ("[Tool Call] ... Result: ..."). With enough of them in history the
+        model started imitating that text format -- typing out a fake tool
+        call with an invented result instead of actually calling the tool,
+        then ending without a VERDICT. Native tool_calls + ToolMessage pairs
+        are what the model sees for its own live calls, so there's nothing
+        to imitate.
         """
         messages = []
 
-        # Interleave tasks, steps, and outputs in order
-        step_index = 0
         for i, task in enumerate(self.all_tasks):
-            # The user's question
             messages.append(HumanMessage(content=task))
 
-            # All tool calls made during this investigation
-            # Each step is (AgentAction, observation)
-            investigation_steps = self._get_steps_for_investigation(i)
-            for action, observation in investigation_steps:
-                tool_message = self._format_step_as_message(action, observation)
-                messages.append(AIMessage(content=tool_message))
+            for n, (action, observation) in enumerate(self._get_steps_for_investigation(i)):
+                messages.extend(self._step_messages(action, observation, f"t{i}s{n}"))
 
             # The final report
             if i < len(self.all_outputs):
@@ -287,19 +284,31 @@ class ContextManager:
         recent_steps = self.all_steps[-self.window_size:]
         recent_task_indices = self.step_task_index[-self.window_size:]
 
+        first_step = len(self.all_steps) - len(recent_steps)
         last_task_index = None
-        for (action, observation), task_index in zip(recent_steps, recent_task_indices):
+        for n, ((action, observation), task_index) in enumerate(zip(recent_steps, recent_task_indices)):
             if task_index != last_task_index:
                 if last_task_index is not None:
                     messages.append(AIMessage(content=self._closing_line(last_task_index)))
                 messages.append(HumanMessage(content=self.all_tasks[task_index]))
                 last_task_index = task_index
-            tool_message = self._format_step_as_message(action, observation)
-            messages.append(AIMessage(content=tool_message))
+            messages.extend(self._step_messages(action, observation, f"w{first_step + n}"))
         if last_task_index is not None:
             messages.append(AIMessage(content=self._closing_line(last_task_index)))
 
         return messages
+
+    def _step_messages(self, action, observation, fallback_id: str) -> list[BaseMessage]:
+        call_id = getattr(action, "tool_call_id", None) or f"hist_{fallback_id}"
+        tool_input = getattr(action, "tool_input", {})
+        return [
+            AIMessage(content="", tool_calls=[{
+                "name": getattr(action, "tool", str(action)),
+                "args": tool_input if isinstance(tool_input, dict) else {"input": tool_input},
+                "id": call_id,
+            }]),
+            ToolMessage(content=str(observation), tool_call_id=call_id),
+        ]
 
     def _verdict_of(self, task_index: int) -> str:
         match = re.search(r"VERDICT:\s*(MALICIOUS|BENIGN|ESCALATE)", self.all_outputs[task_index])
