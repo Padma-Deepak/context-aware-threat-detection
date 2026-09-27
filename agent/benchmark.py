@@ -46,7 +46,13 @@ load_dotenv()
 # CONFIGURATION
 # ──────────────────────────────────────────────────────────────
 
-RUNS_PER_CHAIN = 3          # how many times to run each chain per mode.
+RUNS_PER_CHAIN = int(os.getenv("RUNS_PER_CHAIN", "3"))  # repeats of each chain per mode
+
+# LONG_CHAIN=1 runs every scenario in the file as ONE chain through one
+# ContextManager, so history keeps accumulating for the whole file -- the
+# long-horizon setting context compression is meant for. Default keeps the
+# hand-picked 3x6 grouping below.
+LONG_CHAIN = os.getenv("LONG_CHAIN") == "1"
 WINDOW_SIZE = 2              # lowered from 5: real scenarios cap at 4 tool
                              # calls, so window_size=5 never triggered summarization
 
@@ -107,7 +113,7 @@ FALLBACK_SCENARIOS = [
 class RunResult:
     def __init__(self, scenario_id, mode, run_number, verdict,
                  ground_truth, tokens, duration, tool_calls,
-                 history_pairs_at_call):
+                 history_pairs_at_call, input_tokens=0, summarizer_tokens=0):
         self.scenario_id = scenario_id
         self.mode = mode                    # "full" or "windowed_summary"
         self.run_number = run_number        # which repeat of the chain this came from
@@ -120,6 +126,8 @@ class RunResult:
         # len(context_manager.all_steps) immediately before this scenario's
         # investigate() call -- how much accumulated history was in play.
         self.history_pairs_at_call = history_pairs_at_call
+        self.input_tokens = input_tokens            # agent prompt tokens (includes history)
+        self.summarizer_tokens = summarizer_tokens  # windowed_summary only
 
     def __repr__(self):
         status = "✓" if self.correct else "✗"
@@ -170,6 +178,9 @@ def build_chains(scenarios: list[dict]) -> list[list[dict]]:
     exercises the shared-ContextManager chaining, just without the
     hand-picked entity pairing.
     """
+    if LONG_CHAIN:
+        return [scenarios]
+
     by_id = {s["id"]: s for s in scenarios}
     ids_needed = [sid for group in CHAIN_SCENARIO_IDS for sid in group]
 
@@ -221,7 +232,9 @@ async def run_chain(chain: list[dict], mode: str, run_number: int, all_results: 
             tokens=result["tokens_used"],
             duration=result["duration_seconds"],
             tool_calls=result["tool_calls"],
-            history_pairs_at_call=history_pairs_at_call
+            history_pairs_at_call=history_pairs_at_call,
+            input_tokens=result["agent_input_tokens"],
+            summarizer_tokens=result["summarizer_tokens"]
         ))
         checkpoint_results(all_results)
 
@@ -285,6 +298,8 @@ def compute_metrics(results: list[RunResult], mode: str) -> dict:
     avg_tokens = sum(r.tokens for r in mode_results) / total
     avg_duration = sum(r.duration for r in mode_results) / total
     avg_tool_calls = sum(r.tool_calls for r in mode_results) / total
+    avg_input_tokens = sum(r.input_tokens for r in mode_results) / total
+    avg_summarizer_tokens = sum(r.summarizer_tokens for r in mode_results) / total
 
     # Per-scenario breakdown
     scenario_ids = list(dict.fromkeys(r.scenario_id for r in mode_results))
@@ -306,6 +321,8 @@ def compute_metrics(results: list[RunResult], mode: str) -> dict:
         "avg_tokens": avg_tokens,
         "avg_duration": avg_duration,
         "avg_tool_calls": avg_tool_calls,
+        "avg_input_tokens": avg_input_tokens,
+        "avg_summarizer_tokens": avg_summarizer_tokens,
         "per_scenario": per_scenario
     }
 
@@ -354,6 +371,12 @@ def print_results(full_metrics: dict, windowed_metrics: dict, scenarios: list[di
     row("Avg Tool Calls",
         full_metrics["avg_tool_calls"], windowed_metrics["avg_tool_calls"],
         fmt=".1f")
+    row("  of which prompt tokens",
+        full_metrics["avg_input_tokens"], windowed_metrics["avg_input_tokens"],
+        fmt=".0f")
+    row("  of which summarizer",
+        full_metrics["avg_summarizer_tokens"], windowed_metrics["avg_summarizer_tokens"],
+        fmt=".0f")
 
     # Token savings
     if full_metrics["avg_tokens"] > 0:
@@ -425,7 +448,9 @@ def _serialize_raw(all_results: list[RunResult]) -> list[dict]:
             "tokens": r.tokens,
             "duration": r.duration,
             "tool_calls": r.tool_calls,
-            "history_pairs_at_call": r.history_pairs_at_call
+            "history_pairs_at_call": r.history_pairs_at_call,
+            "input_tokens": r.input_tokens,
+            "summarizer_tokens": r.summarizer_tokens
         }
         for r in all_results
     ]
@@ -442,6 +467,8 @@ def save_results(all_results: list[RunResult], full_metrics: dict, windowed_metr
         "config": {
             "runs_per_chain": RUNS_PER_CHAIN,
             "window_size": WINDOW_SIZE,
+            "long_chain": LONG_CHAIN,
+            "scenarios_file": str(SCENARIOS_FILE),
             "model": os.getenv("OPENAI_MODEL", "gpt-4o")
         },
         "summary": {
@@ -473,6 +500,8 @@ def checkpoint_results(all_results: list[RunResult]):
         "config": {
             "runs_per_chain": RUNS_PER_CHAIN,
             "window_size": WINDOW_SIZE,
+            "long_chain": LONG_CHAIN,
+            "scenarios_file": str(SCENARIOS_FILE),
             "model": os.getenv("OPENAI_MODEL", "gpt-4o")
         },
         "raw_results": _serialize_raw(all_results)
