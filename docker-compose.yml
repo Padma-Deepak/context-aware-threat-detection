@@ -28,7 +28,7 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-secinvest}:${POSTGRES_PASSWORD:-secinvest_local_only}@postgres:5432/${POSTGRES_DB:-secinvest}
     ports:
-      - "8000:8000"
+      - "${MCP_HOST_PORT:-8000}:8000"
 
 volumes:
   pgdata:

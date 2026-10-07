@@ -3,3 +3,10 @@ __pycache__/
 *.pyc
 .env
 agent/benchmark_results*.json
+
+# Committed, analysed result files live in results/. Raw runs written next to the agent stay ignored.
+.DS_Store
+.pytest_cache/
+.ruff_cache/
+.llm_cache/
+agent/*.log

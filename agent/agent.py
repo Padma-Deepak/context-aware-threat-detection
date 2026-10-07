@@ -14,76 +14,20 @@
 #   - Know anything about the database (MCP server's job)
 
 import os
-import re
 import time
 import asyncio
 from dotenv import load_dotenv
 
-from langchain_openai import ChatOpenAI
 from langchain.agents import AgentExecutor, create_tool_calling_agent
 from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
+import llm as llm_factory
+from observability import TraceCallback, UsageCallback
+from prompts import get_system_prompt
+from schemas import extract_verdict, parse_report
+
 load_dotenv()
-
-# ──────────────────────────────────────────────────────────────
-# SYSTEM PROMPT
-#
-# This turns a general LLM into a security analyst.
-# Key design decisions:
-#   1. Enforces investigation order (reputation first, logs second)
-#   2. Tells the LLM to cross-reference across tools
-#   3. Enforces exact VERDICT format so our parser can extract it
-#   4. temperature=0 means deterministic — same input = same verdict
-# ──────────────────────────────────────────────────────────────
-
-SYSTEM_PROMPT = """You are an expert security analyst investigating potential threats.
-
-You have access to 5 tools. Use them to investigate thoroughly:
-
-  lookup_ip_reputation  — threat score + which sources flagged it
-  geolocate_ip          — country, ASN, hosting provider
-  query_logs            — what this IP/domain actually did on our network
-  lookup_cve            — severity of any vulnerabilities exploited
-  check_domain_reputation — whether associated domains are malicious
-
-INVESTIGATION PROTOCOL:
-1. Start with lookup_ip_reputation for any IP in the task.
-2. If score > 30, call geolocate_ip and query_logs.
-3. If logs mention a CVE ID, call lookup_cve.
-4. If logs mention a domain, call check_domain_reputation.
-5. Cross-reference everything — the same IP appearing in reputation,
-   logs, AND domain reputation is much stronger evidence than any one alone.
-
-REPORT FORMAT — your final response must follow this exactly:
-
-## Investigation Report
-
-**Target:** [IP or domain investigated]
-**Date:** [today]
-
-### Findings
-[Each tool's key finding in 1-2 sentences. Be specific — include IPs, scores, countries, event counts.]
-
-### Evidence Summary
-[How the findings connect. What pattern do they form together?]
-
-### Risk Assessment
-**Severity:** [CRITICAL / HIGH / MEDIUM / LOW]
-**Confidence:** [HIGH / MEDIUM / LOW]
-
-### Recommended Actions
-[Numbered list of concrete next steps]
-
-VERDICT: [MALICIOUS / BENIGN / ESCALATE]
-
-RULES:
-- VERDICT must be on its own line, exactly as shown.
-- MALICIOUS = confirmed threat. BENIGN = no threat. ESCALATE = ambiguous, needs human review.
-- Never produce a verdict without calling at least 2 tools.
-- Never guess — only conclude from tool evidence.
-"""
-
 
 class InvestigationAgent:
 
@@ -94,18 +38,13 @@ class InvestigationAgent:
         """
         self.context_manager = context_manager
 
-        # temperature=0 — deterministic output
-        # Security verdicts must be consistent across runs
-        # max_retries: the OpenAI SDK backs off and retries on 429s
-        # (rate limit) automatically. Default of 2 isn't enough headroom
-        # for a benchmark hammering a low-TPM-tier org back-to-back.
-        self.llm = ChatOpenAI(
-            model=os.getenv("OPENAI_MODEL", "gpt-4o"),
-            temperature=0,
-            api_key=os.getenv("OPENAI_API_KEY"),
-            max_retries=8,
-            timeout=120
-        )
+        # temperature=0 (deterministic-ish; repeats still vary), max_retries=8 so a
+        # rate-limited benchmark backs off instead of crashing. Provider/model
+        # come from llm.py (LLM_PROVIDER / OPENAI_MODEL / ANTHROPIC_MODEL).
+        self.llm = llm_factory.make_agent_llm()
+        self.prompt_version = os.getenv("PROMPT_VERSION", "v1").lower()
+        self.system_prompt = get_system_prompt(self.prompt_version)
+        self.max_iterations = int(os.getenv("MAX_ITERATIONS", "10"))
 
         # One line change swaps stub for Padma's real server
         self.mcp_server_url = os.getenv("MCP_SERVER_URL", "http://localhost:8000/mcp")
@@ -140,11 +79,11 @@ class InvestigationAgent:
             if response has tool_call → execute tool → add result → repeat
             else → final answer, stop
 
-        max_iterations=10 prevents infinite loops.
+        max_iterations (env MAX_ITERATIONS, default 10) prevents infinite loops.
         return_intermediate_steps=True gives benchmark.py the tool call count.
         """
         prompt = ChatPromptTemplate.from_messages([
-            ("system", SYSTEM_PROMPT),
+            ("system", self.system_prompt),
             MessagesPlaceholder("chat_history", optional=True),
             ("human", "{input}"),
             MessagesPlaceholder("agent_scratchpad"),
@@ -156,7 +95,7 @@ class InvestigationAgent:
             agent=agent,
             tools=tools,
             verbose=True,
-            max_iterations=10,
+            max_iterations=self.max_iterations,
             return_intermediate_steps=True
         )
 
@@ -189,10 +128,11 @@ class InvestigationAgent:
         if self.context_manager:
             chat_history = self.context_manager.get_history()
 
-        response = await executor.ainvoke({
-            "input": task,
-            "chat_history": chat_history
-        })
+        usage = UsageCallback()
+        response = await executor.ainvoke(
+            {"input": task, "chat_history": chat_history},
+            config={"callbacks": [usage, TraceCallback(run_label=task[:60])]},
+        )
 
         # Update context manager with what just happened
         if self.context_manager:
@@ -207,14 +147,18 @@ class InvestigationAgent:
         intermediate_steps = response.get("intermediate_steps", [])
         tool_call_count = len(intermediate_steps)
         verdict = self._extract_verdict(report)
-        tokens_used = self._estimate_tokens(task, report, intermediate_steps)
+        # Real usage reported by the API, summed over every LLM call in this
+        # run (system prompt, injected history, scratchpad re-sends and all).
+        # Falls back to the chars//4 estimate only if the provider reported none.
+        if usage.llm_calls and usage.total_tokens:
+            agent_tokens, tokens_source = usage.total_tokens, "api"
+        else:
+            agent_tokens, tokens_source = self._estimate_tokens(task, report, intermediate_steps), "estimate"
 
-        # In windowed_summary mode, the update() call above may have just
-        # triggered a real (billed) summarizer API call. Fold its actual
-        # token cost in here so tokens_used reflects the true cost of this
-        # investigation, not just the main agent's own request.
-        if self.context_manager:
-            tokens_used += self.context_manager.pop_summarizer_tokens()
+        # windowed_summary's update() above may have made a billed summarizer
+        # call; fold its real usage in so windowing is not made to look free.
+        summarizer_tokens = self.context_manager.pop_summarizer_tokens() if self.context_manager else 0
+        tokens_used = agent_tokens + summarizer_tokens
 
         return {
             "task": task,
@@ -222,20 +166,20 @@ class InvestigationAgent:
             "verdict": verdict,
             "tool_calls": tool_call_count,
             "tokens_used": tokens_used,
+            "agent_tokens": agent_tokens,
+            "agent_input_tokens": usage.input_tokens if tokens_source == "api" else 0,
+            "agent_output_tokens": usage.output_tokens if tokens_source == "api" else 0,
+            "summarizer_tokens": summarizer_tokens,
+            "tokens_source": tokens_source,
+            "llm_calls": usage.llm_calls,
+            "parsed": parse_report(report),
             "duration_seconds": round(duration, 2),
             "intermediate_steps": intermediate_steps
         }
 
     def _extract_verdict(self, report: str) -> str:
-        """
-        Extracts VERDICT line from the report.
-        Regex handles extra whitespace or formatting.
-        Returns UNKNOWN if agent failed to produce a verdict.
-        """
-        match = re.search(r"VERDICT:\s*(MALICIOUS|BENIGN|ESCALATE)", report)
-        if match:
-            return match.group(1)
-        return "UNKNOWN"
+        """Last VERDICT line in the report, or UNKNOWN (see schemas.extract_verdict)."""
+        return extract_verdict(report)
 
     def _estimate_tokens(self, task, report, steps) -> int:
         """

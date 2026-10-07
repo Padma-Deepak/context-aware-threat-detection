@@ -1,0 +1,614 @@
+[
+  {
+    "id": "G03",
+    "archetype": "malicious_ip",
+    "difficulty": "easy",
+    "ground_truth": "MALICIOUS",
+    "task": "198.51.100.220 is generating suspicious activity against bastion-03. Investigate and recommend an action.",
+    "expected_tools": [
+      "lookup_ip_reputation",
+      "query_logs",
+      "geolocate_ip"
+    ],
+    "rationale": "High score, several flagging sources and hostile log lines: unambiguous by construction.",
+    "chain": "g1"
+  },
+  {
+    "id": "G35",
+    "archetype": "benign_ip",
+    "difficulty": "easy",
+    "ground_truth": "BENIGN",
+    "task": "Can you check whether 192.0.2.41 is a problem? It appeared in a routine report.",
+    "expected_tools": [
+      "lookup_ip_reputation",
+      "query_logs"
+    ],
+    "rationale": "Low score, old first_seen, no flagging sources, routine signed download: clean by construction.",
+    "chain": "g1"
+  },
+  {
+    "id": "G17",
+    "archetype": "threshold_trap_ip",
+    "difficulty": "medium",
+    "ground_truth": "BENIGN",
+    "task": "203.0.113.152 has a middling reputation score. Investigate and tell us whether we should act.",
+    "expected_tools": [
+      "lookup_ip_reputation",
+      "geolocate_ip",
+      "query_logs"
+    ],
+    "rationale": "Score just above the prompt's >30 trigger from one noisy source, but every deeper check is clean.",
+    "chain": "g1"
+  },
+  {
+    "id": "G05",
+    "archetype": "suspicious_domain",
+    "difficulty": "ambiguous",
+    "ground_truth": "ESCALATE",
+    "task": "An analyst flagged willow-relay.net as 'maybe weird'. Can you confirm one way or the other?",
+    "expected_tools": [
+      "check_domain_reputation"
+    ],
+    "rationale": "Suspicious category, mid score, one weak source: not clean enough for BENIGN, not confirmed for MALICIOUS.",
+    "chain": "g1"
+  },
+  {
+    "id": "G22",
+    "archetype": "unseeded_ip",
+    "difficulty": "hard",
+    "ground_truth": "ESCALATE",
+    "task": "We saw a single connection attempt from 192.0.2.23 and nothing else. Threat, safe, or something else?",
+    "expected_tools": [
+      "lookup_ip_reputation"
+    ],
+    "rationale": "Never seeded, so every tool returns no data. Absence of evidence: ESCALATE, not BENIGN.",
+    "chain": "g1"
+  },
+  {
+    "id": "G28",
+    "archetype": "benign_ip",
+    "difficulty": "easy",
+    "ground_truth": "BENIGN",
+    "task": "Can you check whether 198.51.100.30 is a problem? It appeared in a routine report.",
+    "expected_tools": [
+      "lookup_ip_reputation",
+      "query_logs"
+    ],
+    "rationale": "Low score, old first_seen, no flagging sources, routine signed download: clean by construction.",
+    "chain": "g1"
+  },
+  {
+    "id": "G21",
+    "archetype": "benign_domain",
+    "difficulty": "easy",
+    "ground_truth": "BENIGN",
+    "task": "Our proxy logged traffic to prairie-edge.net. Should we block it?",
+    "expected_tools": [
+      "check_domain_reputation"
+    ],
+    "rationale": "Benign category, near-zero score, old first_seen: clean by construction.",
+    "chain": "g1"
+  },
+  {
+    "id": "G04",
+    "archetype": "malicious_ip",
+    "difficulty": "easy",
+    "ground_truth": "MALICIOUS",
+    "task": "198.51.100.162 is generating suspicious activity against mail-01. Investigate and recommend an action.",
+    "expected_tools": [
+      "lookup_ip_reputation",
+      "query_logs",
+      "geolocate_ip"
+    ],
+    "rationale": "High score, several flagging sources and hostile log lines: unambiguous by construction.",
+    "chain": "g1"
+  },
+  {
+    "id": "G11",
+    "archetype": "suspicious_domain",
+    "difficulty": "ambiguous",
+    "ground_truth": "ESCALATE",
+    "task": "An analyst flagged north-portal.online as 'maybe weird'. Can you confirm one way or the other?",
+    "expected_tools": [
+      "check_domain_reputation"
+    ],
+    "rationale": "Suspicious category, mid score, one weak source: not clean enough for BENIGN, not confirmed for MALICIOUS.",
+    "chain": "g2"
+  },
+  {
+    "id": "G27",
+    "archetype": "malicious_domain",
+    "difficulty": "easy",
+    "ground_truth": "MALICIOUS",
+    "task": "A user reported an email linking to vector-edge.info. Is this domain malicious?",
+    "expected_tools": [
+      "check_domain_reputation"
+    ],
+    "rationale": "Category c2, score >= 85 from multiple sources: unambiguous by construction.",
+    "chain": "g2"
+  },
+  {
+    "id": "G46",
+    "archetype": "malicious_domain",
+    "difficulty": "easy",
+    "ground_truth": "MALICIOUS",
+    "task": "A user reported an email linking to lumen-cdn.io. Is this domain malicious?",
+    "expected_tools": [
+      "check_domain_reputation"
+    ],
+    "rationale": "Category malware, score >= 85 from multiple sources: unambiguous by construction.",
+    "chain": "g2"
+  },
+  {
+    "id": "G43",
+    "archetype": "benign_ip",
+    "difficulty": "easy",
+    "ground_truth": "BENIGN",
+    "task": "203.0.113.38 shows up in our network logs. Is it something we should worry about?",
+    "expected_tools": [
+      "lookup_ip_reputation",
+      "query_logs"
+    ],
+    "rationale": "Low score, old first_seen, no flagging sources, routine signed download: clean by construction.",
+    "chain": "g2"
+  },
+  {
+    "id": "G15",
+    "archetype": "unseeded_ip",
+    "difficulty": "hard",
+    "ground_truth": "ESCALATE",
+    "task": "203.0.113.222 touched ws-203 once. Can you tell us what it is?",
+    "expected_tools": [
+      "lookup_ip_reputation"
+    ],
+    "rationale": "Never seeded, so every tool returns no data. Absence of evidence: ESCALATE, not BENIGN.",
+    "chain": "g2"
+  },
+  {
+    "id": "G08",
+    "archetype": "benign_ip",
+    "difficulty": "easy",
+    "ground_truth": "BENIGN",
+    "task": "192.0.2.228 shows up in our network logs. Is it something we should worry about?",
+    "expected_tools": [
+      "lookup_ip_reputation",
+      "query_logs"
+    ],
+    "rationale": "Low score, old first_seen, no flagging sources, routine signed download: clean by construction.",
+    "chain": "g2"
+  },
+  {
+    "id": "G42",
+    "archetype": "unseeded_ip",
+    "difficulty": "hard",
+    "ground_truth": "ESCALATE",
+    "task": "We saw a single connection attempt from 192.0.2.182 and nothing else. Threat, safe, or something else?",
+    "expected_tools": [
+      "lookup_ip_reputation"
+    ],
+    "rationale": "Never seeded, so every tool returns no data. Absence of evidence: ESCALATE, not BENIGN.",
+    "chain": "g2"
+  },
+  {
+    "id": "G39",
+    "archetype": "suspicious_domain",
+    "difficulty": "ambiguous",
+    "ground_truth": "ESCALATE",
+    "task": "An analyst flagged harbor-relay.site as 'maybe weird'. Can you confirm one way or the other?",
+    "expected_tools": [
+      "check_domain_reputation"
+    ],
+    "rationale": "Suspicious category, mid score, one weak source: not clean enough for BENIGN, not confirmed for MALICIOUS.",
+    "chain": "g2"
+  },
+  {
+    "id": "G34",
+    "archetype": "threshold_trap_ip",
+    "difficulty": "medium",
+    "ground_truth": "BENIGN",
+    "task": "192.0.2.28 has a middling reputation score. Investigate and tell us whether we should act.",
+    "expected_tools": [
+      "lookup_ip_reputation",
+      "geolocate_ip",
+      "query_logs"
+    ],
+    "rationale": "Score just above the prompt's >30 trigger from one noisy source, but every deeper check is clean.",
+    "chain": "g3"
+  },
+  {
+    "id": "G07",
+    "archetype": "threshold_trap_ip",
+    "difficulty": "medium",
+    "ground_truth": "BENIGN",
+    "task": "203.0.113.240 has a middling reputation score. Investigate and tell us whether we should act.",
+    "expected_tools": [
+      "lookup_ip_reputation",
+      "geolocate_ip",
+      "query_logs"
+    ],
+    "rationale": "Score just above the prompt's >30 trigger from one noisy source, but every deeper check is clean.",
+    "chain": "g3"
+  },
+  {
+    "id": "G44",
+    "archetype": "benign_domain",
+    "difficulty": "easy",
+    "ground_truth": "BENIGN",
+    "task": "Our proxy logged traffic to vector-update.com. Should we block it?",
+    "expected_tools": [
+      "check_domain_reputation"
+    ],
+    "rationale": "Benign category, near-zero score, old first_seen: clean by construction.",
+    "chain": "g3"
+  },
+  {
+    "id": "G40",
+    "archetype": "suspicious_domain",
+    "difficulty": "ambiguous",
+    "ground_truth": "ESCALATE",
+    "task": "An analyst flagged prairie-portal.info as 'maybe weird'. Can you confirm one way or the other?",
+    "expected_tools": [
+      "check_domain_reputation"
+    ],
+    "rationale": "Suspicious category, mid score, one weak source: not clean enough for BENIGN, not confirmed for MALICIOUS.",
+    "chain": "g3"
+  },
+  {
+    "id": "G41",
+    "archetype": "suspicious_domain",
+    "difficulty": "ambiguous",
+    "ground_truth": "ESCALATE",
+    "task": "An analyst flagged signal-metrics.online as 'maybe weird'. Can you confirm one way or the other?",
+    "expected_tools": [
+      "check_domain_reputation"
+    ],
+    "rationale": "Suspicious category, mid score, one weak source: not clean enough for BENIGN, not confirmed for MALICIOUS.",
+    "chain": "g3"
+  },
+  {
+    "id": "G31",
+    "archetype": "malicious_ip",
+    "difficulty": "easy",
+    "ground_truth": "MALICIOUS",
+    "task": "Our IDS raised alerts naming 203.0.113.91. Is this address a real threat?",
+    "expected_tools": [
+      "lookup_ip_reputation",
+      "query_logs",
+      "geolocate_ip"
+    ],
+    "rationale": "High score, several flagging sources and hostile log lines: unambiguous by construction.",
+    "chain": "g3"
+  },
+  {
+    "id": "G10",
+    "archetype": "malicious_ip",
+    "difficulty": "easy",
+    "ground_truth": "MALICIOUS",
+    "task": "Please assess 198.51.100.62: it keeps appearing in alerts on vpn-04.",
+    "expected_tools": [
+      "lookup_ip_reputation",
+      "query_logs",
+      "geolocate_ip"
+    ],
+    "rationale": "High score, several flagging sources and hostile log lines: unambiguous by construction.",
+    "chain": "g3"
+  },
+  {
+    "id": "G20",
+    "archetype": "unseeded_ip",
+    "difficulty": "hard",
+    "ground_truth": "ESCALATE",
+    "task": "We saw a single connection attempt from 198.51.100.175 and nothing else. Threat, safe, or something else?",
+    "expected_tools": [
+      "lookup_ip_reputation"
+    ],
+    "rationale": "Never seeded, so every tool returns no data. Absence of evidence: ESCALATE, not BENIGN.",
+    "chain": "g3"
+  },
+  {
+    "id": "G45",
+    "archetype": "cve_only",
+    "difficulty": "ambiguous",
+    "ground_truth": "ESCALATE",
+    "task": "A scan reported CVE-2026-93004 on one of our servers, with no sign of exploitation. How urgent is it?",
+    "expected_tools": [
+      "lookup_cve"
+    ],
+    "rationale": "A CVE with no exploitation evidence is ESCALATE in this benchmark (same convention as S06/S18).",
+    "chain": "g4"
+  },
+  {
+    "id": "G13",
+    "archetype": "benign_ip",
+    "difficulty": "easy",
+    "ground_truth": "BENIGN",
+    "task": "Can you check whether 203.0.113.148 is a problem? It appeared in a routine report.",
+    "expected_tools": [
+      "lookup_ip_reputation",
+      "query_logs"
+    ],
+    "rationale": "Low score, old first_seen, no flagging sources, routine signed download: clean by construction.",
+    "chain": "g4"
+  },
+  {
+    "id": "G29",
+    "archetype": "benign_ip",
+    "difficulty": "easy",
+    "ground_truth": "BENIGN",
+    "task": "198.51.100.225 shows up in our network logs. Is it something we should worry about?",
+    "expected_tools": [
+      "lookup_ip_reputation",
+      "query_logs"
+    ],
+    "rationale": "Low score, old first_seen, no flagging sources, routine signed download: clean by construction.",
+    "chain": "g4"
+  },
+  {
+    "id": "G24",
+    "archetype": "malicious_ip",
+    "difficulty": "easy",
+    "ground_truth": "MALICIOUS",
+    "task": "203.0.113.73 is generating suspicious activity against fs-05. Investigate and recommend an action.",
+    "expected_tools": [
+      "lookup_ip_reputation",
+      "query_logs",
+      "geolocate_ip"
+    ],
+    "rationale": "High score, several flagging sources and hostile log lines: unambiguous by construction.",
+    "chain": "g4"
+  },
+  {
+    "id": "G33",
+    "archetype": "threshold_trap_ip",
+    "difficulty": "medium",
+    "ground_truth": "BENIGN",
+    "task": "198.51.100.187 has a middling reputation score. Investigate and tell us whether we should act.",
+    "expected_tools": [
+      "lookup_ip_reputation",
+      "geolocate_ip",
+      "query_logs"
+    ],
+    "rationale": "Score just above the prompt's >30 trigger from one noisy source, but every deeper check is clean.",
+    "chain": "g4"
+  },
+  {
+    "id": "G36",
+    "archetype": "unseeded_ip",
+    "difficulty": "hard",
+    "ground_truth": "ESCALATE",
+    "task": "We saw a single connection attempt from 203.0.113.2 and nothing else. Threat, safe, or something else?",
+    "expected_tools": [
+      "lookup_ip_reputation"
+    ],
+    "rationale": "Never seeded, so every tool returns no data. Absence of evidence: ESCALATE, not BENIGN.",
+    "chain": "g4"
+  },
+  {
+    "id": "G48",
+    "archetype": "benign_ip",
+    "difficulty": "easy",
+    "ground_truth": "BENIGN",
+    "task": "Can you check whether 198.51.100.104 is a problem? It appeared in a routine report.",
+    "expected_tools": [
+      "lookup_ip_reputation",
+      "query_logs"
+    ],
+    "rationale": "Low score, old first_seen, no flagging sources, routine signed download: clean by construction.",
+    "chain": "g4"
+  },
+  {
+    "id": "G37",
+    "archetype": "cve_only",
+    "difficulty": "ambiguous",
+    "ground_truth": "ESCALATE",
+    "task": "A scan reported CVE-2026-93003 on one of our servers, with no sign of exploitation. How urgent is it?",
+    "expected_tools": [
+      "lookup_cve"
+    ],
+    "rationale": "A CVE with no exploitation evidence is ESCALATE in this benchmark (same convention as S06/S18).",
+    "chain": "g4"
+  },
+  {
+    "id": "G16",
+    "archetype": "threshold_trap_ip",
+    "difficulty": "medium",
+    "ground_truth": "BENIGN",
+    "task": "203.0.113.229 has a middling reputation score. Investigate and tell us whether we should act.",
+    "expected_tools": [
+      "lookup_ip_reputation",
+      "geolocate_ip",
+      "query_logs"
+    ],
+    "rationale": "Score just above the prompt's >30 trigger from one noisy source, but every deeper check is clean.",
+    "chain": "g5"
+  },
+  {
+    "id": "G09",
+    "archetype": "malicious_ip",
+    "difficulty": "easy",
+    "ground_truth": "MALICIOUS",
+    "task": "203.0.113.184 is generating suspicious activity against vpn-04. Investigate and recommend an action.",
+    "expected_tools": [
+      "lookup_ip_reputation",
+      "query_logs",
+      "geolocate_ip"
+    ],
+    "rationale": "High score, several flagging sources and hostile log lines: unambiguous by construction.",
+    "chain": "g5"
+  },
+  {
+    "id": "G06",
+    "archetype": "malicious_ip",
+    "difficulty": "easy",
+    "ground_truth": "MALICIOUS",
+    "task": "Please assess 203.0.113.138: it keeps appearing in alerts on bastion-03.",
+    "expected_tools": [
+      "lookup_ip_reputation",
+      "query_logs",
+      "geolocate_ip"
+    ],
+    "rationale": "High score, several flagging sources and hostile log lines: unambiguous by construction.",
+    "chain": "g5"
+  },
+  {
+    "id": "G25",
+    "archetype": "benign_domain",
+    "difficulty": "easy",
+    "ground_truth": "BENIGN",
+    "task": "Our proxy logged traffic to quartz-edge.online. Should we block it?",
+    "expected_tools": [
+      "check_domain_reputation"
+    ],
+    "rationale": "Benign category, near-zero score, old first_seen: clean by construction.",
+    "chain": "g5"
+  },
+  {
+    "id": "G19",
+    "archetype": "cve_only",
+    "difficulty": "ambiguous",
+    "ground_truth": "ESCALATE",
+    "task": "A scan reported CVE-2026-93002 on one of our servers, with no sign of exploitation. How urgent is it?",
+    "expected_tools": [
+      "lookup_cve"
+    ],
+    "rationale": "A CVE with no exploitation evidence is ESCALATE in this benchmark (same convention as S06/S18).",
+    "chain": "g5"
+  },
+  {
+    "id": "G12",
+    "archetype": "benign_domain",
+    "difficulty": "easy",
+    "ground_truth": "BENIGN",
+    "task": "Our proxy logged traffic to quartz-cloud.xyz. Should we block it?",
+    "expected_tools": [
+      "check_domain_reputation"
+    ],
+    "rationale": "Benign category, near-zero score, old first_seen: clean by construction.",
+    "chain": "g5"
+  },
+  {
+    "id": "G02",
+    "archetype": "cve_only",
+    "difficulty": "ambiguous",
+    "ground_truth": "ESCALATE",
+    "task": "A scan reported CVE-2026-93001 on one of our servers, with no sign of exploitation. How urgent is it?",
+    "expected_tools": [
+      "lookup_cve"
+    ],
+    "rationale": "A CVE with no exploitation evidence is ESCALATE in this benchmark (same convention as S06/S18).",
+    "chain": "g5"
+  },
+  {
+    "id": "G38",
+    "archetype": "malicious_ip",
+    "difficulty": "easy",
+    "ground_truth": "MALICIOUS",
+    "task": "Please assess 192.0.2.87: it keeps appearing in alerts on db-02.",
+    "expected_tools": [
+      "lookup_ip_reputation",
+      "query_logs",
+      "geolocate_ip"
+    ],
+    "rationale": "High score, several flagging sources and hostile log lines: unambiguous by construction.",
+    "chain": "g5"
+  },
+  {
+    "id": "G01",
+    "archetype": "malicious_domain",
+    "difficulty": "easy",
+    "ground_truth": "MALICIOUS",
+    "task": "A user reported an email linking to quartz-cloud.info. Is this domain malicious?",
+    "expected_tools": [
+      "check_domain_reputation"
+    ],
+    "rationale": "Category malware, score >= 85 from multiple sources: unambiguous by construction.",
+    "chain": "g6"
+  },
+  {
+    "id": "G26",
+    "archetype": "unseeded_ip",
+    "difficulty": "hard",
+    "ground_truth": "ESCALATE",
+    "task": "We saw a single connection attempt from 203.0.113.217 and nothing else. Threat, safe, or something else?",
+    "expected_tools": [
+      "lookup_ip_reputation"
+    ],
+    "rationale": "Never seeded, so every tool returns no data. Absence of evidence: ESCALATE, not BENIGN.",
+    "chain": "g6"
+  },
+  {
+    "id": "G47",
+    "archetype": "suspicious_domain",
+    "difficulty": "ambiguous",
+    "ground_truth": "ESCALATE",
+    "task": "An analyst flagged ember-update.xyz as 'maybe weird'. Can you confirm one way or the other?",
+    "expected_tools": [
+      "check_domain_reputation"
+    ],
+    "rationale": "Suspicious category, mid score, one weak source: not clean enough for BENIGN, not confirmed for MALICIOUS.",
+    "chain": "g6"
+  },
+  {
+    "id": "G14",
+    "archetype": "threshold_trap_ip",
+    "difficulty": "medium",
+    "ground_truth": "BENIGN",
+    "task": "203.0.113.6 has a middling reputation score. Investigate and tell us whether we should act.",
+    "expected_tools": [
+      "lookup_ip_reputation",
+      "geolocate_ip",
+      "query_logs"
+    ],
+    "rationale": "Score just above the prompt's >30 trigger from one noisy source, but every deeper check is clean.",
+    "chain": "g6"
+  },
+  {
+    "id": "G30",
+    "archetype": "malicious_domain",
+    "difficulty": "easy",
+    "ground_truth": "MALICIOUS",
+    "task": "A user reported an email linking to amber-update.xyz. Is this domain malicious?",
+    "expected_tools": [
+      "check_domain_reputation"
+    ],
+    "rationale": "Category phishing, score >= 85 from multiple sources: unambiguous by construction.",
+    "chain": "g6"
+  },
+  {
+    "id": "G18",
+    "archetype": "malicious_domain",
+    "difficulty": "easy",
+    "ground_truth": "MALICIOUS",
+    "task": "A user reported an email linking to ember-docs.site. Is this domain malicious?",
+    "expected_tools": [
+      "check_domain_reputation"
+    ],
+    "rationale": "Category phishing, score >= 85 from multiple sources: unambiguous by construction.",
+    "chain": "g6"
+  },
+  {
+    "id": "G23",
+    "archetype": "benign_ip",
+    "difficulty": "easy",
+    "ground_truth": "BENIGN",
+    "task": "192.0.2.52 shows up in our network logs. Is it something we should worry about?",
+    "expected_tools": [
+      "lookup_ip_reputation",
+      "query_logs"
+    ],
+    "rationale": "Low score, old first_seen, no flagging sources, routine signed download: clean by construction.",
+    "chain": "g6"
+  },
+  {
+    "id": "G32",
+    "archetype": "malicious_domain",
+    "difficulty": "easy",
+    "ground_truth": "MALICIOUS",
+    "task": "A user reported an email linking to harbor-assets.site. Is this domain malicious?",
+    "expected_tools": [
+      "check_domain_reputation"
+    ],
+    "rationale": "Category c2, score >= 85 from multiple sources: unambiguous by construction.",
+    "chain": "g6"
+  }
+]

@@ -22,11 +22,14 @@ Then connect an MCP client to http://<host>:8000/mcp using the
 streamable-http transport.
 """
 
+import os
+
 from mcp.server.fastmcp import FastMCP
 
 import data
 
-mcp = FastMCP("security-investigation-mock", host="0.0.0.0", port=8000)
+# MCP_PORT lets the server run when 8000 is taken (a common clash with other dev servers).
+mcp = FastMCP("security-investigation-mock", host="0.0.0.0", port=int(os.getenv("MCP_PORT", "8000")))
 
 
 @mcp.tool()

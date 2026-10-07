@@ -1,0 +1,14 @@
+line-length = 120
+target-version = "py312"
+extend-exclude = [".venv", "repo"]
+
+[lint]
+select = ["E", "F", "W", "B"]
+ignore = [
+    "E501",  # long lines: many are prose comments/docstrings, and seed/prompt strings are intentionally wide
+    "B905",  # zip() without strict= : Python 3.9-compatible idiom used deliberately in tests/tools
+]
+
+[lint.per-file-ignores]
+"tests/*" = ["E402"]
+"scripts/*" = ["E402", "E741"]  # E402: repo root is added to sys.path before importing data.py; E741: `l` = log row in the original verifiers

@@ -1,0 +1,755 @@
+{
+  "status": "complete",
+  "timestamp": "2026-09-25T11:27:03Z",
+  "config": {
+    "runs_per_chain": 3,
+    "window_size": 2,
+    "model": "gpt-4o"
+  },
+  "summary": {
+    "full_history": {
+      "mode": "full",
+      "total_runs": 24,
+      "correct_runs": 20,
+      "accuracy": 83.33333333333334,
+      "avg_tokens": 983.8333333333334,
+      "avg_duration": 25.104166666666668,
+      "avg_tool_calls": 2.0,
+      "per_scenario": {
+        "H01": {
+          "correct": 3,
+          "total": 3,
+          "verdicts": [
+            "MALICIOUS",
+            "MALICIOUS",
+            "MALICIOUS"
+          ]
+        },
+        "H02": {
+          "correct": 0,
+          "total": 3,
+          "verdicts": [
+            "BENIGN",
+            "BENIGN",
+            "BENIGN"
+          ]
+        },
+        "H03": {
+          "correct": 3,
+          "total": 3,
+          "verdicts": [
+            "BENIGN",
+            "BENIGN",
+            "BENIGN"
+          ]
+        },
+        "H04": {
+          "correct": 2,
+          "total": 3,
+          "verdicts": [
+            "BENIGN",
+            "ESCALATE",
+            "BENIGN"
+          ]
+        },
+        "H05": {
+          "correct": 3,
+          "total": 3,
+          "verdicts": [
+            "MALICIOUS",
+            "MALICIOUS",
+            "MALICIOUS"
+          ]
+        },
+        "H06": {
+          "correct": 3,
+          "total": 3,
+          "verdicts": [
+            "ESCALATE",
+            "ESCALATE",
+            "ESCALATE"
+          ]
+        },
+        "H07": {
+          "correct": 3,
+          "total": 3,
+          "verdicts": [
+            "MALICIOUS",
+            "MALICIOUS",
+            "MALICIOUS"
+          ]
+        },
+        "H08": {
+          "correct": 3,
+          "total": 3,
+          "verdicts": [
+            "BENIGN",
+            "BENIGN",
+            "BENIGN"
+          ]
+        }
+      }
+    },
+    "windowed_summary": {
+      "mode": "windowed_summary",
+      "total_runs": 24,
+      "correct_runs": 15,
+      "accuracy": 62.5,
+      "avg_tokens": 2520.75,
+      "avg_duration": 11.760833333333332,
+      "avg_tool_calls": 2.0,
+      "per_scenario": {
+        "H01": {
+          "correct": 3,
+          "total": 3,
+          "verdicts": [
+            "MALICIOUS",
+            "MALICIOUS",
+            "MALICIOUS"
+          ]
+        },
+        "H02": {
+          "correct": 0,
+          "total": 3,
+          "verdicts": [
+            "BENIGN",
+            "BENIGN",
+            "BENIGN"
+          ]
+        },
+        "H03": {
+          "correct": 3,
+          "total": 3,
+          "verdicts": [
+            "BENIGN",
+            "BENIGN",
+            "BENIGN"
+          ]
+        },
+        "H04": {
+          "correct": 3,
+          "total": 3,
+          "verdicts": [
+            "BENIGN",
+            "BENIGN",
+            "BENIGN"
+          ]
+        },
+        "H05": {
+          "correct": 3,
+          "total": 3,
+          "verdicts": [
+            "MALICIOUS",
+            "MALICIOUS",
+            "MALICIOUS"
+          ]
+        },
+        "H06": {
+          "correct": 0,
+          "total": 3,
+          "verdicts": [
+            "MALICIOUS",
+            "MALICIOUS",
+            "MALICIOUS"
+          ]
+        },
+        "H07": {
+          "correct": 3,
+          "total": 3,
+          "verdicts": [
+            "MALICIOUS",
+            "MALICIOUS",
+            "MALICIOUS"
+          ]
+        },
+        "H08": {
+          "correct": 0,
+          "total": 3,
+          "verdicts": [
+            "MALICIOUS",
+            "MALICIOUS",
+            "MALICIOUS"
+          ]
+        }
+      }
+    }
+  },
+  "raw_results": [
+    {
+      "scenario_id": "H01",
+      "mode": "full",
+      "run": 1,
+      "verdict": "MALICIOUS",
+      "ground_truth": "MALICIOUS",
+      "correct": true,
+      "tokens": 1312,
+      "duration": 8.12,
+      "tool_calls": 3,
+      "history_pairs_at_call": 0
+    },
+    {
+      "scenario_id": "H02",
+      "mode": "full",
+      "run": 1,
+      "verdict": "BENIGN",
+      "ground_truth": "ESCALATE",
+      "correct": false,
+      "tokens": 492,
+      "duration": 11.62,
+      "tool_calls": 1,
+      "history_pairs_at_call": 3
+    },
+    {
+      "scenario_id": "H03",
+      "mode": "full",
+      "run": 1,
+      "verdict": "BENIGN",
+      "ground_truth": "BENIGN",
+      "correct": true,
+      "tokens": 481,
+      "duration": 20.41,
+      "tool_calls": 1,
+      "history_pairs_at_call": 4
+    },
+    {
+      "scenario_id": "H04",
+      "mode": "full",
+      "run": 1,
+      "verdict": "BENIGN",
+      "ground_truth": "BENIGN",
+      "correct": true,
+      "tokens": 1392,
+      "duration": 13.84,
+      "tool_calls": 3,
+      "history_pairs_at_call": 5
+    },
+    {
+      "scenario_id": "H05",
+      "mode": "full",
+      "run": 1,
+      "verdict": "MALICIOUS",
+      "ground_truth": "MALICIOUS",
+      "correct": true,
+      "tokens": 1834,
+      "duration": 33.63,
+      "tool_calls": 4,
+      "history_pairs_at_call": 8
+    },
+    {
+      "scenario_id": "H06",
+      "mode": "full",
+      "run": 1,
+      "verdict": "ESCALATE",
+      "ground_truth": "ESCALATE",
+      "correct": true,
+      "tokens": 550,
+      "duration": 17.18,
+      "tool_calls": 1,
+      "history_pairs_at_call": 12
+    },
+    {
+      "scenario_id": "H07",
+      "mode": "full",
+      "run": 1,
+      "verdict": "MALICIOUS",
+      "ground_truth": "MALICIOUS",
+      "correct": true,
+      "tokens": 1628,
+      "duration": 49.08,
+      "tool_calls": 3,
+      "history_pairs_at_call": 13
+    },
+    {
+      "scenario_id": "H08",
+      "mode": "full",
+      "run": 1,
+      "verdict": "BENIGN",
+      "ground_truth": "BENIGN",
+      "correct": true,
+      "tokens": 241,
+      "duration": 22.09,
+      "tool_calls": 0,
+      "history_pairs_at_call": 16
+    },
+    {
+      "scenario_id": "H01",
+      "mode": "full",
+      "run": 2,
+      "verdict": "MALICIOUS",
+      "ground_truth": "MALICIOUS",
+      "correct": true,
+      "tokens": 1323,
+      "duration": 25.76,
+      "tool_calls": 3,
+      "history_pairs_at_call": 0
+    },
+    {
+      "scenario_id": "H02",
+      "mode": "full",
+      "run": 2,
+      "verdict": "BENIGN",
+      "ground_truth": "ESCALATE",
+      "correct": false,
+      "tokens": 442,
+      "duration": 15.25,
+      "tool_calls": 1,
+      "history_pairs_at_call": 3
+    },
+    {
+      "scenario_id": "H03",
+      "mode": "full",
+      "run": 2,
+      "verdict": "BENIGN",
+      "ground_truth": "BENIGN",
+      "correct": true,
+      "tokens": 465,
+      "duration": 19.64,
+      "tool_calls": 1,
+      "history_pairs_at_call": 4
+    },
+    {
+      "scenario_id": "H04",
+      "mode": "full",
+      "run": 2,
+      "verdict": "ESCALATE",
+      "ground_truth": "BENIGN",
+      "correct": false,
+      "tokens": 1433,
+      "duration": 41.6,
+      "tool_calls": 3,
+      "history_pairs_at_call": 5
+    },
+    {
+      "scenario_id": "H05",
+      "mode": "full",
+      "run": 2,
+      "verdict": "MALICIOUS",
+      "ground_truth": "MALICIOUS",
+      "correct": true,
+      "tokens": 1832,
+      "duration": 59.78,
+      "tool_calls": 4,
+      "history_pairs_at_call": 8
+    },
+    {
+      "scenario_id": "H06",
+      "mode": "full",
+      "run": 2,
+      "verdict": "ESCALATE",
+      "ground_truth": "ESCALATE",
+      "correct": true,
+      "tokens": 534,
+      "duration": 34.92,
+      "tool_calls": 1,
+      "history_pairs_at_call": 12
+    },
+    {
+      "scenario_id": "H07",
+      "mode": "full",
+      "run": 2,
+      "verdict": "MALICIOUS",
+      "ground_truth": "MALICIOUS",
+      "correct": true,
+      "tokens": 1604,
+      "duration": 48.58,
+      "tool_calls": 3,
+      "history_pairs_at_call": 13
+    },
+    {
+      "scenario_id": "H08",
+      "mode": "full",
+      "run": 2,
+      "verdict": "BENIGN",
+      "ground_truth": "BENIGN",
+      "correct": true,
+      "tokens": 257,
+      "duration": 33.61,
+      "tool_calls": 0,
+      "history_pairs_at_call": 16
+    },
+    {
+      "scenario_id": "H01",
+      "mode": "full",
+      "run": 3,
+      "verdict": "MALICIOUS",
+      "ground_truth": "MALICIOUS",
+      "correct": true,
+      "tokens": 1326,
+      "duration": 21.09,
+      "tool_calls": 3,
+      "history_pairs_at_call": 0
+    },
+    {
+      "scenario_id": "H02",
+      "mode": "full",
+      "run": 3,
+      "verdict": "BENIGN",
+      "ground_truth": "ESCALATE",
+      "correct": false,
+      "tokens": 461,
+      "duration": 10.08,
+      "tool_calls": 1,
+      "history_pairs_at_call": 3
+    },
+    {
+      "scenario_id": "H03",
+      "mode": "full",
+      "run": 3,
+      "verdict": "BENIGN",
+      "ground_truth": "BENIGN",
+      "correct": true,
+      "tokens": 452,
+      "duration": 10.63,
+      "tool_calls": 1,
+      "history_pairs_at_call": 4
+    },
+    {
+      "scenario_id": "H04",
+      "mode": "full",
+      "run": 3,
+      "verdict": "BENIGN",
+      "ground_truth": "BENIGN",
+      "correct": true,
+      "tokens": 1376,
+      "duration": 22.46,
+      "tool_calls": 3,
+      "history_pairs_at_call": 5
+    },
+    {
+      "scenario_id": "H05",
+      "mode": "full",
+      "run": 3,
+      "verdict": "MALICIOUS",
+      "ground_truth": "MALICIOUS",
+      "correct": true,
+      "tokens": 1828,
+      "duration": 25.87,
+      "tool_calls": 4,
+      "history_pairs_at_call": 8
+    },
+    {
+      "scenario_id": "H06",
+      "mode": "full",
+      "run": 3,
+      "verdict": "ESCALATE",
+      "ground_truth": "ESCALATE",
+      "correct": true,
+      "tokens": 538,
+      "duration": 15.98,
+      "tool_calls": 1,
+      "history_pairs_at_call": 12
+    },
+    {
+      "scenario_id": "H07",
+      "mode": "full",
+      "run": 3,
+      "verdict": "MALICIOUS",
+      "ground_truth": "MALICIOUS",
+      "correct": true,
+      "tokens": 1569,
+      "duration": 29.96,
+      "tool_calls": 3,
+      "history_pairs_at_call": 13
+    },
+    {
+      "scenario_id": "H08",
+      "mode": "full",
+      "run": 3,
+      "verdict": "BENIGN",
+      "ground_truth": "BENIGN",
+      "correct": true,
+      "tokens": 242,
+      "duration": 11.32,
+      "tool_calls": 0,
+      "history_pairs_at_call": 16
+    },
+    {
+      "scenario_id": "H01",
+      "mode": "windowed_summary",
+      "run": 1,
+      "verdict": "MALICIOUS",
+      "ground_truth": "MALICIOUS",
+      "correct": true,
+      "tokens": 1730,
+      "duration": 9.45,
+      "tool_calls": 3,
+      "history_pairs_at_call": 0
+    },
+    {
+      "scenario_id": "H02",
+      "mode": "windowed_summary",
+      "run": 1,
+      "verdict": "BENIGN",
+      "ground_truth": "ESCALATE",
+      "correct": false,
+      "tokens": 1107,
+      "duration": 10.19,
+      "tool_calls": 1,
+      "history_pairs_at_call": 3
+    },
+    {
+      "scenario_id": "H03",
+      "mode": "windowed_summary",
+      "run": 1,
+      "verdict": "BENIGN",
+      "ground_truth": "BENIGN",
+      "correct": true,
+      "tokens": 1219,
+      "duration": 8.32,
+      "tool_calls": 1,
+      "history_pairs_at_call": 4
+    },
+    {
+      "scenario_id": "H04",
+      "mode": "windowed_summary",
+      "run": 1,
+      "verdict": "BENIGN",
+      "ground_truth": "BENIGN",
+      "correct": true,
+      "tokens": 2575,
+      "duration": 14.43,
+      "tool_calls": 3,
+      "history_pairs_at_call": 5
+    },
+    {
+      "scenario_id": "H05",
+      "mode": "windowed_summary",
+      "run": 1,
+      "verdict": "MALICIOUS",
+      "ground_truth": "MALICIOUS",
+      "correct": true,
+      "tokens": 3676,
+      "duration": 22.12,
+      "tool_calls": 4,
+      "history_pairs_at_call": 8
+    },
+    {
+      "scenario_id": "H06",
+      "mode": "windowed_summary",
+      "run": 1,
+      "verdict": "MALICIOUS",
+      "ground_truth": "ESCALATE",
+      "correct": false,
+      "tokens": 2854,
+      "duration": 9.64,
+      "tool_calls": 1,
+      "history_pairs_at_call": 12
+    },
+    {
+      "scenario_id": "H07",
+      "mode": "windowed_summary",
+      "run": 1,
+      "verdict": "MALICIOUS",
+      "ground_truth": "MALICIOUS",
+      "correct": true,
+      "tokens": 3722,
+      "duration": 9.08,
+      "tool_calls": 2,
+      "history_pairs_at_call": 13
+    },
+    {
+      "scenario_id": "H08",
+      "mode": "windowed_summary",
+      "run": 1,
+      "verdict": "MALICIOUS",
+      "ground_truth": "BENIGN",
+      "correct": false,
+      "tokens": 3264,
+      "duration": 14.59,
+      "tool_calls": 1,
+      "history_pairs_at_call": 15
+    },
+    {
+      "scenario_id": "H01",
+      "mode": "windowed_summary",
+      "run": 2,
+      "verdict": "MALICIOUS",
+      "ground_truth": "MALICIOUS",
+      "correct": true,
+      "tokens": 1678,
+      "duration": 7.86,
+      "tool_calls": 3,
+      "history_pairs_at_call": 0
+    },
+    {
+      "scenario_id": "H02",
+      "mode": "windowed_summary",
+      "run": 2,
+      "verdict": "BENIGN",
+      "ground_truth": "ESCALATE",
+      "correct": false,
+      "tokens": 1076,
+      "duration": 5.61,
+      "tool_calls": 1,
+      "history_pairs_at_call": 3
+    },
+    {
+      "scenario_id": "H03",
+      "mode": "windowed_summary",
+      "run": 2,
+      "verdict": "BENIGN",
+      "ground_truth": "BENIGN",
+      "correct": true,
+      "tokens": 1280,
+      "duration": 6.56,
+      "tool_calls": 1,
+      "history_pairs_at_call": 4
+    },
+    {
+      "scenario_id": "H04",
+      "mode": "windowed_summary",
+      "run": 2,
+      "verdict": "BENIGN",
+      "ground_truth": "BENIGN",
+      "correct": true,
+      "tokens": 2616,
+      "duration": 19.6,
+      "tool_calls": 3,
+      "history_pairs_at_call": 5
+    },
+    {
+      "scenario_id": "H05",
+      "mode": "windowed_summary",
+      "run": 2,
+      "verdict": "MALICIOUS",
+      "ground_truth": "MALICIOUS",
+      "correct": true,
+      "tokens": 3693,
+      "duration": 23.93,
+      "tool_calls": 4,
+      "history_pairs_at_call": 8
+    },
+    {
+      "scenario_id": "H06",
+      "mode": "windowed_summary",
+      "run": 2,
+      "verdict": "MALICIOUS",
+      "ground_truth": "ESCALATE",
+      "correct": false,
+      "tokens": 2867,
+      "duration": 11.5,
+      "tool_calls": 1,
+      "history_pairs_at_call": 12
+    },
+    {
+      "scenario_id": "H07",
+      "mode": "windowed_summary",
+      "run": 2,
+      "verdict": "MALICIOUS",
+      "ground_truth": "MALICIOUS",
+      "correct": true,
+      "tokens": 3747,
+      "duration": 9.39,
+      "tool_calls": 2,
+      "history_pairs_at_call": 13
+    },
+    {
+      "scenario_id": "H08",
+      "mode": "windowed_summary",
+      "run": 2,
+      "verdict": "MALICIOUS",
+      "ground_truth": "BENIGN",
+      "correct": false,
+      "tokens": 3203,
+      "duration": 8.82,
+      "tool_calls": 1,
+      "history_pairs_at_call": 15
+    },
+    {
+      "scenario_id": "H01",
+      "mode": "windowed_summary",
+      "run": 3,
+      "verdict": "MALICIOUS",
+      "ground_truth": "MALICIOUS",
+      "correct": true,
+      "tokens": 1719,
+      "duration": 8.26,
+      "tool_calls": 3,
+      "history_pairs_at_call": 0
+    },
+    {
+      "scenario_id": "H02",
+      "mode": "windowed_summary",
+      "run": 3,
+      "verdict": "BENIGN",
+      "ground_truth": "ESCALATE",
+      "correct": false,
+      "tokens": 1099,
+      "duration": 5.1,
+      "tool_calls": 1,
+      "history_pairs_at_call": 3
+    },
+    {
+      "scenario_id": "H03",
+      "mode": "windowed_summary",
+      "run": 3,
+      "verdict": "BENIGN",
+      "ground_truth": "BENIGN",
+      "correct": true,
+      "tokens": 1273,
+      "duration": 8.48,
+      "tool_calls": 1,
+      "history_pairs_at_call": 4
+    },
+    {
+      "scenario_id": "H04",
+      "mode": "windowed_summary",
+      "run": 3,
+      "verdict": "BENIGN",
+      "ground_truth": "BENIGN",
+      "correct": true,
+      "tokens": 2607,
+      "duration": 14.67,
+      "tool_calls": 3,
+      "history_pairs_at_call": 5
+    },
+    {
+      "scenario_id": "H05",
+      "mode": "windowed_summary",
+      "run": 3,
+      "verdict": "MALICIOUS",
+      "ground_truth": "MALICIOUS",
+      "correct": true,
+      "tokens": 3683,
+      "duration": 22.33,
+      "tool_calls": 4,
+      "history_pairs_at_call": 8
+    },
+    {
+      "scenario_id": "H06",
+      "mode": "windowed_summary",
+      "run": 3,
+      "verdict": "MALICIOUS",
+      "ground_truth": "ESCALATE",
+      "correct": false,
+      "tokens": 2836,
+      "duration": 14.74,
+      "tool_calls": 1,
+      "history_pairs_at_call": 12
+    },
+    {
+      "scenario_id": "H07",
+      "mode": "windowed_summary",
+      "run": 3,
+      "verdict": "MALICIOUS",
+      "ground_truth": "MALICIOUS",
+      "correct": true,
+      "tokens": 3718,
+      "duration": 7.78,
+      "tool_calls": 2,
+      "history_pairs_at_call": 13
+    },
+    {
+      "scenario_id": "H08",
+      "mode": "windowed_summary",
+      "run": 3,
+      "verdict": "MALICIOUS",
+      "ground_truth": "BENIGN",
+      "correct": false,
+      "tokens": 3256,
+      "duration": 9.81,
+      "tool_calls": 1,
+      "history_pairs_at_call": 15
+    }
+  ]
+}
