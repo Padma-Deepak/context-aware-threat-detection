@@ -1,0 +1,11 @@
+# The SOC triage agent (triage/). Local models need nothing else; see docs/EXCYTIN.md.
+langgraph==0.6.11
+langchain-core==0.3.86
+langchain-openai==0.3.19
+mysql-connector-python==26.7.0
+PyYAML==6.0.3
+httpx==0.28.1
+opentelemetry-sdk==1.45.1
+streamlit==1.65.0
+mcp==1.30.0
+pydantic>=2.7

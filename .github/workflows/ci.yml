@@ -16,10 +16,14 @@ jobs:
           cache-dependency-path: |
             requirements.txt
             agent/requirements.txt
+            requirements-triage.txt
       - run: pip install -r requirements-dev.txt
       - run: ruff check .
-      - name: Unit tests (mocked LLM, no network, no database)
-        run: pytest -q
+      - name: Unit tests (scripted/replayed LLM, no network, no database, no API key)
+        env:
+          TRIAGE_CACHE: replay
+          TRIAGE_INTEL_CACHE: replay
+        run: pytest -q -m "not db and not excytin"
 
   database:
     runs-on: ubuntu-latest
@@ -46,6 +50,7 @@ jobs:
           cache-dependency-path: |
             requirements.txt
             agent/requirements.txt
+            requirements-triage.txt
       - run: pip install -r requirements-dev.txt
       - name: Generated scenarios are reproducible from the committed seed
         run: |
@@ -59,3 +64,12 @@ jobs:
           done
       - name: Data-layer tests and label verification against live Postgres
         run: pytest -q -m db
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Triage image builds and imports
+        run: |
+          docker build -f Dockerfile.triage -t soc-triage .
+          docker run --rm soc-triage python -c "import triage.cli, triage.mcp_server; print('ok')"

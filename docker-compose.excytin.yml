@@ -1,0 +1,59 @@
+# ExCyTIn-Bench logs: one MySQL container, 8 databases (incident_<N>).
+#
+#   python -m triage.excytin.setup_db                 # writes build/excytin_init/01_excytin.sql
+#   EXCYTIN_DATA=~/excytin-data/data_anonymized/incidents docker compose -f docker-compose.excytin.yml up -d
+#
+# The first start loads ~3.4 GB of CSV and takes a while; watch `docker compose -f docker-compose.excytin.yml logs -f`
+# until "ready for connections" appears after "MySQL init process done".
+services:
+  excytin_mysql:
+    image: mysql:8.4
+    container_name: excytin_mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ${EXCYTIN_ROOT_PASSWORD:-excytin_local_only}
+      MYSQL_ROOT_HOST: "%"
+    command:
+      - --secure-file-priv=/var/lib/mysql-files
+      - --innodb-buffer-pool-size=512M
+      - --max-execution-time=30000
+    ports:
+      - "${EXCYTIN_PORT:-3316}:3306"
+    volumes:
+      - ${EXCYTIN_DATA:-~/excytin-data/data_anonymized/incidents}:/var/lib/mysql-files
+      - ./build/excytin_init:/docker-entrypoint-initdb.d:ro
+      - excytin_db:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-ureader", "-preader"]
+      interval: 10s
+      timeout: 5s
+      retries: 360
+
+  # The analyst UI and the triage MCP server. `docker compose -f docker-compose.excytin.yml --profile app up -d`
+  # The model runs on the host (Ollama / LM Studio), reached through host.docker.internal.
+  triage_ui:
+    profiles: ["app"]
+    build: {context: ., dockerfile: Dockerfile.triage}
+    depends_on: {excytin_mysql: {condition: service_healthy}}
+    environment: &triage_env
+      EXCYTIN_HOST: excytin_mysql
+      EXCYTIN_PORT: "3306"
+      TRIAGE_PROVIDER: ${TRIAGE_PROVIDER:-ollama}
+      TRIAGE_MODEL: ${TRIAGE_MODEL:-gpt-oss:20b}
+      TRIAGE_BASE_URL: ${TRIAGE_BASE_URL:-http://host.docker.internal:11434/v1}
+    volumes: ["./.triage:/app/.triage"]
+    ports: ["${TRIAGE_UI_PORT:-8501}:8501"]
+    extra_hosts: ["host.docker.internal:host-gateway"]
+
+  triage_mcp:
+    profiles: ["app"]
+    build: {context: ., dockerfile: Dockerfile.triage}
+    command: ["python", "-m", "triage.mcp_server"]
+    depends_on: {excytin_mysql: {condition: service_healthy}}
+    environment:
+      <<: *triage_env
+      TRIAGE_MCP_HOST: 0.0.0.0
+    volumes: ["./.triage:/app/.triage"]
+    ports: ["${TRIAGE_MCP_PORT:-8001}:8001"]
+
+volumes:
+  excytin_db:

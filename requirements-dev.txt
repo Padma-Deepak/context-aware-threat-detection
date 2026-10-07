@@ -1,5 +1,6 @@
 # Everything needed to lint and test without an API key.
 -r requirements.txt
 -r agent/requirements.txt
+-r requirements-triage.txt
 pytest>=8
 ruff>=0.6

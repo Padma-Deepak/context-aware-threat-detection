@@ -10,3 +10,6 @@ agent/benchmark_results*.json
 .ruff_cache/
 .llm_cache/
 agent/*.log
+build/
+.intel_cache/
+.triage/

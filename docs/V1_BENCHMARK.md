@@ -1,4 +1,6 @@
-# Context-Aware Threat Detection
+# v1: Context-compression benchmark (synthetic data)
+
+> This is the original experiment, kept for reference. The current project is in the [main README](../README.md). v1 could not show that summarising history is safe (its results were inconclusive), and security work needs full recall, so v2 never compresses: it keeps everything and retrieves.
 
 [![CI](https://github.com/Padma-Deepak/context-aware-threat-detection/actions/workflows/ci.yml/badge.svg)](https://github.com/Padma-Deepak/context-aware-threat-detection/actions/workflows/ci.yml)
 
@@ -14,7 +16,7 @@ against the live data.
 ## Results so far — read this before quoting a number
 
 Two runs exist (GPT-4o, window = 2 tool pairs, 3 repeats). Full analysis:
-[`results/`](results/). Both were analysed with a cluster bootstrap over scenarios and an exact
+[`results/`](../results/). Both were analysed with a cluster bootstrap over scenarios and an exact
 McNemar test on paired runs.
 
 | Set | `full` | `windowed_summary` | Difference | McNemar p |
@@ -25,7 +27,7 @@ McNemar test on paired runs.
 **What this shows, honestly:** a *direction* on the held-out set, not a result. The confidence
 interval on the difference includes zero, and the dev set points the other way. With 8 scenarios the
 experiment cannot separate "compression hurts" from noise. The new 48-scenario generated set and the
-runbook in [`docs/EXPERIMENTS.md`](docs/EXPERIMENTS.md) exist to settle it.
+runbook in [`docs/EXPERIMENTS.md`](EXPERIMENTS.md) exist to settle it.
 
 **What the failures look like** (held-out): under `windowed_summary`, H06 (ambiguous domain) and H08
 (low-score IP) flipped to `MALICIOUS`, i.e. false positives rather than vague answers. H02 (a never-seen
@@ -133,7 +135,7 @@ pytest -q                     # 80 pass
 python scripts/verify_extended.py all
 ```
 
-Run an investigation or the benchmark (needs a key): see [`docs/EXPERIMENTS.md`](docs/EXPERIMENTS.md).
+Run an investigation or the benchmark (needs a key): see [`docs/EXPERIMENTS.md`](EXPERIMENTS.md).
 
 ## Configuration
 
@@ -269,11 +271,11 @@ change as the storage backend evolves.
 
 | Tool | Parameters | Returns |
 |---|---|---|
-| `lookup_ip_reputation` | `ip: str` | `{ip, malicious: bool, score: int (0-100), sources_flagging: [str], first_seen: str \| null}` |
+| `lookup_ip_reputation` | `ip: str` | `{ip, found: bool, malicious: bool, score: int (0-100) \| null, sources_flagging: [str], first_seen: str \| null}` |
 | `geolocate_ip` | `ip: str` | `{ip, found: bool, country, city, asn, org: str \| null}` |
 | `query_logs` | `src_ip: str, hours: int = 24` | `{src_ip, hours, count: int, logs: [{id, timestamp, event_type, src, detail}]}` |
 | `lookup_cve` | `cve_id: str` | `{cve_id, found: bool, severity, cvss_score, description, affected_products: [str], published, synthetic: true}` |
-| `check_domain_reputation` | `domain: str` | `{domain, malicious: bool, score: int (0-100), category, sources_flagging: [str], first_seen: str \| null}` |
+| `check_domain_reputation` | `domain: str` | `{domain, found: bool, malicious: bool, score: int (0-100) \| null, category, sources_flagging: [str], first_seen: str \| null}` |
 
 Unknown IPs/domains/CVE IDs are never an error -- each tool returns a
 well-formed zero/null "not found" response instead of raising.
