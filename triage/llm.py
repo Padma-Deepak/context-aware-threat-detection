@@ -29,7 +29,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from langchain_core.messages import AIMessage, BaseMessage, messages_from_dict, messages_to_dict
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, messages_from_dict, messages_to_dict
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -172,6 +172,7 @@ class ChatClient:
         self.cache = cache if cache is not None else default_cache()
         self.budget = budget if budget is not None else default_budget(self.provider, self.model)
         self._backend = backend
+        self.parse_retries = 0
 
     def _get_backend(self):
         if self._backend is None:
@@ -204,13 +205,32 @@ class ChatClient:
         backend = self._get_backend()
         runnable = backend.bind_tools(tools) if tools else backend
         start = time.time()
-        msg = runnable.invoke(messages)
+        msg = self._invoke_with_retry(runnable, messages, tools)
         seconds = time.time() - start
         usage = msg.usage_metadata or {}
         cost = self.budget.add(usage.get("input_tokens", 0), usage.get("output_tokens", 0))
         self.cache.put(key, msg)
         return msg, {"cached": False, "input_tokens": usage.get("input_tokens", 0),
                      "output_tokens": usage.get("output_tokens", 0), "cost_usd": cost, "seconds": seconds}
+
+
+    PARSE_RETRIES = 3
+    RETRYABLE = ("error parsing tool call", "token repeat limit")
+    PARSE_HINT = ("Your last reply could not be parsed as a tool call. Reply with the tool call only: "
+                  "no explanation, no text before or after it.")
+
+    def _invoke_with_retry(self, runnable, messages, tools):
+        """Local servers (Ollama with reasoning models such as gpt-oss) sometimes return HTTP 500 'error
+        parsing tool call' (reasoning written into the tool-call channel) or 'token repeat limit' (a
+        degenerate loop). The request is not at fault, so retry with a reminder; any other error is
+        raised unchanged."""
+        for attempt in range(self.PARSE_RETRIES + 1):
+            try:
+                return runnable.invoke(messages if attempt == 0 else messages + [HumanMessage(content=self.PARSE_HINT)])
+            except Exception as exc:  # noqa: BLE001
+                if not any(k in str(exc) for k in self.RETRYABLE) or attempt == self.PARSE_RETRIES:
+                    raise
+                self.parse_retries += 1
 
 
 _DEFAULT_CACHE = None

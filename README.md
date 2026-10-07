@@ -45,16 +45,33 @@ flowchart LR
 
 ## Results
 
-**No model results yet.** The pipeline is built and tested end to end against the real data with a
-scripted model; the numbers come from running a local model (free) with the commands below. The
-evaluation is designed so the result is trustworthy whichever way it comes out:
+**Pilot only** (`gpt-oss:20b` locally, 5 questions from each of the 8 incidents = 40 per mode, temperature 0,
+$0). Full report: [results/excytin/pilot_report.md](results/excytin/pilot_report.md); raw runs without
+transcripts: [pilot_slim.jsonl](results/excytin/pilot_slim.jsonl).
 
-- **Memory benchmark** (ExCyTIn QA): accuracy by memory mode (`none`, `qa_notes`, `full`, `graph`) with
-  question-level bootstrap CIs, a paired exact McNemar test, and an early-vs-late split (memory can only
-  help questions that come after others in the same incident).
-- **Triage**: malicious recall, misses (malicious called benign), false-positive rate on reviewed benign
-  alerts, escalation rate, error of automatic decisions, citation validity, cost and time per alert.
-- **Robustness**: prompt-injection success rate with a hostile row planted in tool output.
+| Memory | Accuracy (95% CI) | Paired vs none | McNemar p | Tool calls | Input tokens |
+|---|---|---|---|---|---|
+| none | 35.0% (20-50) | | | 10.6 | 30.6k |
+| qa_notes (prior answers only) | 47.5% (32-62) | +12.5 (-5 to +30) | 0.27 | 9.0 | 29.4k |
+| graph (this project) | 50.0% (35-65) | +15.0 (-0.1 to +32) | 0.15 | 9.3 | 33.7k |
+| full (replay everything) | 60.0% (45-75) | +25.0 (+10 to +40) | 0.006 | 5.0 | 56.8k |
+
+What this does and does not show:
+
+- Only `full` is distinguishable from no memory, and `graph` is not distinguishable from `full`, `qa_notes`
+  or `none` at n=40. **The pilot does not show that graph memory beats simple replay.**
+- Chains here are only 5 questions long, which is the best case for `full`: everything still fits. The
+  designed test is longer chains (25 per incident), where full replay overflows its budget and graph
+  memory should hold up. That run has not been done.
+- Graph mode used `recall` on 75% of questions and took 9.3 tool calls and 54 s per question versus 5.0 and
+  22 s for `full`. Its citation validity was 82.5% (the model sometimes cites a question id instead of an
+  evidence id), against 97.5% for `full`.
+- **Conformal escalation could not automate anything.** The model reports 90-99 confidence on 108 of 160
+  answers but is right 62% of those times, so no threshold meets a 5-20% error target and everything
+  escalates. That is the guarantee working as designed, and it shows self-reported confidence from this
+  model is unusable. Agreement across repeated runs is the next thing to try.
+- Not yet run: the 25-per-incident main benchmark, prompt injection, triage on the alert queue, and any
+  commercial-model check.
 
 ## Quickstart
 

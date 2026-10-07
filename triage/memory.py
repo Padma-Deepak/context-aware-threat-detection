@@ -28,7 +28,7 @@ import threading
 from collections import defaultdict
 from dataclasses import dataclass
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import HumanMessage, SystemMessage
 
 MODES = ("none", "qa_notes", "full", "graph")
 
@@ -364,20 +364,17 @@ class FullHistoryMemory(Memory):
 
     def record_answer(self, task_id, task, answer, transcript):
         super().record_answer(task_id, task, answer, transcript)
-        flat = [HumanMessage(content=task)]
-        for m in transcript:
-            if isinstance(m, AIMessage) and m.tool_calls:
-                calls = "; ".join(f"{c['name']}({json.dumps(c['args'])[:300]})" for c in m.tool_calls)
-                flat.append(AIMessage(content=f"[called] {calls}"))
-            elif m.type == "tool":
-                flat.append(HumanMessage(content=f"[tool result]\n{m.content}"))
-        flat.append(AIMessage(content=f"Final answer: {answer}"))
+        # Replay the real messages (task, tool calls, results, submission) so the model sees genuine
+        # tool-call structure. Rendering calls as text made it imitate that text instead of calling tools.
+        flat = list(transcript)
+        if not flat or flat[0].type != "human":
+            flat.insert(0, HumanMessage(content=task))
         self.transcripts.append(flat)
 
     def prefix_messages(self, task):
         out, used = [], 0
         for transcript in reversed(self.transcripts):
-            size = sum(len(str(m.content)) for m in transcript)
+            size = sum(len(str(m.content)) + len(str(getattr(m, "tool_calls", ""))) for m in transcript)
             if used + size > self.max_chars:
                 self.dropped += 1
                 break

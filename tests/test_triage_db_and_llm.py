@@ -85,3 +85,30 @@ def test_openai_needs_a_known_or_explicit_price(monkeypatch):
     with pytest.raises(ValueError):
         default_budget("openai", "some-unpriced-model")
     assert default_budget("openai", "gpt-4o-mini").price_in == 0.15
+
+
+def test_ollama_tool_call_parse_error_is_retried_with_a_reminder_then_raised():
+    attempts = []
+
+    def flaky(messages, tools):
+        attempts.append(messages[-1].content)
+        if len(attempts) < 3:
+            raise RuntimeError("Error code: 500 - error parsing tool call: raw='We need to find...'")
+        return text("ok")
+
+    c = ChatClient(provider="ollama", model="m", cache=ResponseCache(":memory:", "off"), budget=Budget(1),
+                   backend=ScriptedChat(flaky))
+    msg, _ = c.invoke([HumanMessage(content="q")])
+    assert msg.content == "ok" and c.parse_retries == 2
+    assert "tool call only" in attempts[1] and attempts[0] == "q"
+
+    always = ChatClient(provider="ollama", model="m", cache=ResponseCache(":memory:", "off"), budget=Budget(1),
+                        backend=ScriptedChat(lambda m, t: (_ for _ in ()).throw(RuntimeError("error parsing tool call"))))
+    with pytest.raises(RuntimeError):
+        always.invoke([HumanMessage(content="q")])
+
+    other = ChatClient(provider="ollama", model="m", cache=ResponseCache(":memory:", "off"), budget=Budget(1),
+                       backend=ScriptedChat(lambda m, t: (_ for _ in ()).throw(RuntimeError("connection refused"))))
+    with pytest.raises(RuntimeError, match="connection"):
+        other.invoke([HumanMessage(content="q")])
+    assert other.parse_retries == 0

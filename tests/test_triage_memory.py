@@ -1,7 +1,7 @@
 import random
 
 import pytest
-from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from triage_fixtures import ENTITIES
 
 from triage.memory import FullHistoryMemory, GraphMemory, extract_entities, make_memory
@@ -73,15 +73,24 @@ def test_context_block_carries_prior_answers_and_auto_recalls_named_entities():
     assert "Memory recall for 198.43.121.209" in block
 
 
-def test_full_history_replays_and_drops_oldest_beyond_budget():
-    m = FullHistoryMemory(max_chars=400)
+def test_full_history_replays_real_tool_messages_and_drops_oldest_beyond_budget():
+    m = FullHistoryMemory(max_chars=600)
     for i in range(5):
-        transcript = [AIMessage(content="", tool_calls=[{"name": "run_sql", "args": {"query": "q"}, "id": f"c{i}"}]),
-                      ToolMessage(content="r" * 100, tool_call_id=f"c{i}")]
+        transcript = [HumanMessage(content=f"task {i}"),
+                      AIMessage(content="", tool_calls=[{"name": "run_sql", "args": {"query": "q"}, "id": f"c{i}"}]),
+                      ToolMessage(content="r" * 100, tool_call_id=f"c{i}"),
+                      AIMessage(content="", tool_calls=[{"name": "submit_answer", "args": {"answer": f"answer {i}"},
+                                                         "id": f"s{i}"}]),
+                      ToolMessage(content="Submitted.", tool_call_id=f"s{i}")]
         m.record_answer(f"q{i}", f"task {i}", f"answer {i}", transcript)
     msgs = m.prefix_messages("new")
-    text = " ".join(str(x.content) for x in msgs)
-    assert "answer 4" in text and "answer 0" not in text and m.dropped >= 1
+    assert any(isinstance(x, AIMessage) and x.tool_calls for x in msgs)  # real tool calls, not text imitations
+    assert not any("[called]" in str(x.content) for x in msgs)
+    blob = " ".join(str(x.content) + str(getattr(x, "tool_calls", "")) for x in msgs)
+    assert "answer 4" in blob and "answer 0" not in blob and m.dropped >= 1
+    for i, x in enumerate(msgs):  # every tool message is preceded by the call it answers
+        if isinstance(x, ToolMessage):
+            assert any(c["id"] == x.tool_call_id for p in msgs[:i] if isinstance(p, AIMessage) for c in p.tool_calls)
 
 
 @pytest.mark.parametrize("mode,tools", [("none", False), ("qa_notes", False), ("full", False), ("graph", True)])

@@ -100,3 +100,10 @@ def test_budget_exhaustion_is_recorded_not_raised():
     r = build_investigator(incident_db(), make_memory("none"),
                            offline_client(lambda m, t: text("x"), budget=budget)).investigate("q", "t")
     assert r.error and "BudgetExceeded" in r.error and r.final is None
+
+
+def test_json_submission_written_as_prose_is_recovered():
+    agent = build_investigator(incident_db(), make_memory("none"), offline_client(
+        [text("thinking"), text("still"), text('I will submit {"answer": "fk8mq", "confidence": 90, "evidence": []}')]))
+    r = agent.investigate("q", "task")
+    assert r.final["answer"] == "fk8mq" and r.final["confidence"] == 90 and r.fallback == "parsed_text"

@@ -13,3 +13,5 @@ agent/*.log
 build/
 .intel_cache/
 .triage/
+results/excytin/pilot.jsonl
+results/excytin/smoke.jsonl

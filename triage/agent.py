@@ -239,6 +239,12 @@ class Investigator:
         """Last resort when a model answers in prose instead of calling the submit tool."""
         if not text.strip():
             return None, "no_answer"
+        blob = re.search(r"\{.*\}", text, re.S)  # a JSON submission written as prose
+        if blob:
+            try:
+                return self.submission.schema(**json.loads(blob.group(0))).model_dump(), "parsed_text"
+            except (ValueError, ValidationError, TypeError):
+                pass
         m = re.search(r"(?:final answer|answer)\s*[:\-]\s*(.+)", text, re.I)
         guess = (m.group(1) if m else text.strip().splitlines()[-1]).strip()[:300]
         fields = self.submission.schema.model_fields
