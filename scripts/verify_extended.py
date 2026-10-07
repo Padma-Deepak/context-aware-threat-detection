@@ -64,7 +64,7 @@ def check_archetype(s):
                 and rep["first_seen"] and rep["first_seen"] < "2026-01-01" and logs["count"] >= 1, rep
         if a == "threshold_trap_ip":
             return (not rep["malicious"]) and 31 <= rep["score"] <= 44 and rep["sources_flagging"] == ["GreyNoise"], rep
-        return rep["first_seen"] is None and rep["score"] == 0 and not geo["found"] and logs["count"] == 0, rep
+        return rep["first_seen"] is None and not rep["found"] and not geo["found"] and logs["count"] == 0, rep
     if a in ("suspicious_domain", "malicious_domain", "benign_domain"):
         d = domain_of(s)
         rep = data.check_domain_reputation(d)
@@ -111,7 +111,7 @@ def check_manual(s):
     if i == "L06":
         ip = "192.0.2.191"
         rep = R(ip)
-        return rep["first_seen"] is None and rep["score"] == 0 and not data.geolocate_ip(ip)["found"] \
+        return rep["first_seen"] is None and not rep["found"] and not data.geolocate_ip(ip)["found"] \
             and data.query_logs(ip, WIDE)["count"] == 0, rep
     if i == "L07":
         rep = data.check_domain_reputation("fileshare-backup.org")

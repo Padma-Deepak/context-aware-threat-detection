@@ -27,12 +27,12 @@ def lookup_ip_reputation(ip: str) -> dict:
     """Look up reputation data for a single IP address.
 
     Returns:
-        {"ip": str, "malicious": bool, "score": int,
+        {"ip": str, "found": bool, "malicious": bool, "score": int | None,
          "sources_flagging": list[str], "first_seen": str | None}
 
-    Unknown IPs return a well-formed "no data" record
-    (malicious=False, score=0, sources_flagging=[], first_seen=None)
-    rather than raising.
+    Unknown IPs return found=False with score=None rather than raising.
+    A score of 0 would read as "clean"; "never seen" is not the same thing,
+    and conflating the two made the agent call unseen IPs BENIGN (H02).
     """
     key = (ip or "").strip()
     with db.get_cursor() as cur:
@@ -46,13 +46,15 @@ def lookup_ip_reputation(ip: str) -> dict:
     if row is None:
         return {
             "ip": ip,
+            "found": False,
             "malicious": False,
-            "score": 0,
+            "score": None,
             "sources_flagging": [],
             "first_seen": None,
         }
     return {
         "ip": ip,
+        "found": True,
         "malicious": row["malicious"],
         "score": row["score"],
         "sources_flagging": list(row["sources_flagging"] or []),
@@ -101,13 +103,12 @@ def check_domain_reputation(domain: str) -> dict:
     """Look up reputation data for a single domain.
 
     Returns:
-        {"domain": str, "malicious": bool, "score": int, "category": str,
+        {"domain": str, "found": bool, "malicious": bool, "score": int | None, "category": str,
          "sources_flagging": list[str], "first_seen": str | None}
 
     category is one of: malware, phishing, c2, suspicious, benign, unknown.
-    Unknown domains return a well-formed "no data" record
-    (malicious=False, score=0, category="unknown", sources_flagging=[],
-    first_seen=None) rather than raising.
+    Unknown domains return found=False, score=None, category="unknown"
+    rather than raising (see lookup_ip_reputation for why score is None).
     """
     key = (domain or "").strip().lower()
     with db.get_cursor() as cur:
@@ -121,14 +122,16 @@ def check_domain_reputation(domain: str) -> dict:
     if row is None:
         return {
             "domain": domain,
+            "found": False,
             "malicious": False,
-            "score": 0,
+            "score": None,
             "category": "unknown",
             "sources_flagging": [],
             "first_seen": None,
         }
     return {
         "domain": domain,
+        "found": True,
         "malicious": row["malicious"],
         "score": row["score"],
         "category": row["category"],

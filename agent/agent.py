@@ -1,6 +1,6 @@
 # agent.py
 #
-# Person B's core deliverable — the investigation loop.
+# The investigation loop for the v1 synthetic benchmark.
 #
 # What this file does:
 #   1. Connects to MCP server and discovers the 5 security tools
@@ -46,7 +46,6 @@ class InvestigationAgent:
         self.system_prompt = get_system_prompt(self.prompt_version)
         self.max_iterations = int(os.getenv("MAX_ITERATIONS", "10"))
 
-        # One line change swaps stub for Padma's real server
         self.mcp_server_url = os.getenv("MCP_SERVER_URL", "http://localhost:8000/mcp")
 
         # Lazily connected on first investigate() call and reused after
@@ -94,7 +93,7 @@ class InvestigationAgent:
         return AgentExecutor(
             agent=agent,
             tools=tools,
-            verbose=True,
+            verbose=os.getenv("AGENT_VERBOSE", "0") == "1",
             max_iterations=self.max_iterations,
             return_intermediate_steps=True
         )
@@ -104,7 +103,7 @@ class InvestigationAgent:
         Runs a full investigation for the given task.
 
         Args:
-            task: e.g. "Determine whether 185.220.101.5 is malicious"
+            task: e.g. "Determine whether 198.51.100.77 is malicious"
 
         Returns:
             {
@@ -199,8 +198,8 @@ class InvestigationAgent:
 # ──────────────────────────────────────────────────────────────
 # ENTRY POINT — test a single investigation manually
 #
-# Run stub server first:
-#   cd mcp_server && python stub_server.py
+# Start the MCP server first:
+#   docker compose up -d
 #
 # Then in a new terminal:
 #   cd agent && python agent.py
@@ -210,7 +209,7 @@ async def main():
     agent = InvestigationAgent()
 
     result = await agent.investigate(
-        "Determine whether the IP 185.220.101.5 is malicious. "
+        "Determine whether the IP 198.51.100.77 is malicious. "
         "Investigate thoroughly and produce a verdict."
     )
 

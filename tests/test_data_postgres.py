@@ -23,7 +23,7 @@ def data():
 
 def test_unknown_entities_return_well_formed_no_data_records_not_errors(data):
     assert data.lookup_ip_reputation("203.0.113.5") == {
-        "ip": "203.0.113.5", "malicious": False, "score": 0, "sources_flagging": [], "first_seen": None}
+        "ip": "203.0.113.5", "found": False, "malicious": False, "score": None, "sources_flagging": [], "first_seen": None}
     assert data.geolocate_ip("203.0.113.5")["found"] is False
     assert data.check_domain_reputation("never-seen.example")["category"] == "unknown"
     assert data.lookup_cve("CVE-0000-0000")["found"] is False
@@ -39,7 +39,7 @@ def test_query_logs_is_newest_first_and_respects_the_window(data):
 
 def test_queries_are_parameterised_against_injection_strings(data):
     rec = data.lookup_ip_reputation("' OR '1'='1")
-    assert rec["score"] == 0 and rec["first_seen"] is None
+    assert rec["found"] is False and rec["first_seen"] is None
     assert data.query_logs("'; DROP TABLE security_logs;--", 24)["count"] == 0
     assert data.lookup_ip_reputation("203.0.113.88")["score"] == 100  # table still intact
 

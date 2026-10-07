@@ -1,6 +1,6 @@
 # benchmark.py
 #
-# Person B's third deliverable.
+# Runner for the v1 synthetic context-management benchmark.
 #
 # What this does:
 #   Groups scenarios from scenarios.json into chains of related scenarios.
@@ -110,25 +110,6 @@ CHAIN_SCENARIO_IDS = [
     ["S04", "S05", "S01", "S13", "S14", "S18"],
 ]
 
-# Fallback scenarios if scenarios.json doesn't exist yet
-# (so you can test benchmark.py before Padma finishes scenarios.json)
-FALLBACK_SCENARIOS = [
-    {
-        "id": "s01",
-        "task": "Determine whether the IP 185.220.101.5 is malicious. Investigate thoroughly.",
-        "ground_truth": "MALICIOUS"
-    },
-    {
-        "id": "s02",
-        "task": "Check if 8.8.8.8 poses any security threat to our network.",
-        "ground_truth": "BENIGN"
-    },
-    {
-        "id": "s03",
-        "task": "Investigate 185.220.101.5. Cross-reference with domain malware-drop.xyz. Assess combined risk.",
-        "ground_truth": "MALICIOUS"
-    }
-]
 
 
 # ──────────────────────────────────────────────────────────────
@@ -181,12 +162,12 @@ class RunResult:
 
 def load_scenarios() -> list[dict]:
     """
-    Loads scenarios from scenarios.json (Padma's file).
+    Loads scenarios from SCENARIOS_FILE (default scenarios.json).
     Falls back to hardcoded scenarios if file doesn't exist.
 
     WHY FALLBACK?
     So you can run and test benchmark.py right now,
-    before Padma has finished writing scenarios.json.
+    when no scenarios file exists.
     When she's done, drop scenarios.json in the repo root
     and the fallback is never used.
     """
@@ -196,9 +177,7 @@ def load_scenarios() -> list[dict]:
         print(f"Loaded {len(scenarios)} scenarios from {SCENARIOS_FILE}")
         return scenarios
     else:
-        print(f"scenarios.json not found at {SCENARIOS_FILE}")
-        print(f"Using {len(FALLBACK_SCENARIOS)} fallback scenarios for testing")
-        return FALLBACK_SCENARIOS
+        raise FileNotFoundError(f"Scenario file not found: {SCENARIOS_FILE}")
 
 
 # ──────────────────────────────────────────────────────────────
