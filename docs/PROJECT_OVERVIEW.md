@@ -1,303 +1,187 @@
-> **Superseded. Kept for history; read [../README.md](../README.md) instead.** This overview predates a
-> statistical re-analysis and contains claims that did not survive it: (1) the 83% vs 62.5% held-out gap
-> is *not* statistically significant (McNemar p = 0.125; CI on the difference includes 0); (2) the
-> "windowing cost more tokens" claim rests on a token estimator that excluded the injected history;
-> (3) "the summary lost evidence" is an untested explanation, and the failures were false positives
-> (`MALICIOUS`), not vague answers; (4) the dev set actually favoured windowing (90% vs 85%).
+# SOC Triage Agent: Project Overview
 
-# Context-Aware Threat Detection — Project Overview
+*Last updated 2026-10-08. Status: **built and tested; only a pilot evaluation has been run.***
 
 ## What this project is
 
-This is a research-style engineering project with two halves:
+An LLM agent that triages security alerts the way a tier-2 SOC analyst does. It investigates real Microsoft
+Sentinel / Defender XDR logs with read-only SQL, checks threat intelligence, remembers what earlier cases found,
+and returns a verdict in which **every claim cites the query that produced it**. It closes an alert on its own
+only when a calibrated error bound holds; everything else goes to a human reviewer, whose decision becomes a
+label for evaluation and recalibration.
 
-1. **A synthetic security-investigation backend**, exposed as an [MCP](https://modelcontextprotocol.io)
-   (Model Context Protocol) server — a mock threat-intelligence API that a
-   tool-calling AI agent can query.
-2. **An LLM agent + benchmark** that uses that backend to investigate
-   security "tasks" (e.g. *"Is IP 185.220.101.5 malicious?"*) and produce a
-   structured verdict — plus an experiment comparing **two different ways
-   of managing an agent's conversation history** ("context management")
-   to see which one gives the best accuracy for the least token/latency
-   cost.
+It runs **free on a laptop** with a local model (Ollama or LM Studio). OpenAI is supported behind a spend cap.
 
-The central question the project set out to answer:
+The project grew out of an earlier experiment on compressing an agent's history (see "Origin" below). That
+experiment could not show that summarising history is safe, and security work needs every identifier intact, so
+this version **retrieves instead of compressing**: it keeps every tool result verbatim, indexes the entities in
+it, and lets the agent look things up.
 
-> When a tool-using LLM agent runs many investigations back-to-back, can
-> you compress its accumulated history (instead of resending the entire
-> transcript every turn) *without* making it less accurate?
+## Where things stand
 
-This is essentially an applied test of ideas from the paper **"Less
-Context, Better Agents: Efficient Context Engineering for Long-Horizon
-Tool-Using LLM Agents"** (Lodha et al., arXiv:2606.10209), run on a
-purpose-built, fully synthetic security-investigation task so the ground
-truth is known and gradeable.
+| Area | Status |
+|---|---|
+| Real data loaded (ExCyTIn-Bench, 8 incidents, about 2.3 M rows) | ✅ Done, verified |
+| Agent, memory, SQL guards, citations | ✅ Built, 174 tests |
+| Benchmark runner, grader, statistics | ✅ Built; pilot run |
+| Sigma detection compiler | ✅ Built; 1,680 / 1,734 SigmaHQ Windows rules compile |
+| Threat intel (NVD, CISA KEV, ATT&CK) | ✅ Live. AbuseIPDB / ThreatFox need free keys |
+| Conformal escalation | ✅ Built; **automates 0% on the pilot** (model confidence is unusable) |
+| Analyst UI, CLI, MCP server, Docker | ✅ Built; UI checked in a browser |
+| **Pilot benchmark** (5 questions per incident, 4 memory modes) | ✅ Run |
+| **Main benchmark** (25 per incident, longer chains) | ⏳ Not run yet (planned overnight) |
+| Prompt-injection run, triage on the alert queue | ⏳ Built, not run |
+| Commercial-model check, public demo | ⏳ Not done |
 
-All data used anywhere in the project — IPs, domains, CVEs, log entries —
-is **fabricated**. IPs are drawn from IANA/RFC 5737 documentation ranges
-(`192.0.2.0/24`, `198.51.100.0/24`, `203.0.113.0/24`) reserved for exactly
-this kind of example use and never assigned to real hosts; CVE records are
-marked `synthetic: true` and don't correspond to real vulnerabilities.
-Nothing here is real threat intelligence.
+## The pilot result (the only model results so far)
 
-## Why it's structured this way
+`gpt-oss:20b` locally, temperature 0, **5 questions from each of the 8 incidents = 40 per mode**, cost $0.
 
-A tool-calling agent that runs investigation after investigation
-accumulates a growing transcript of past tool calls and results. Resending
-that whole transcript on every single call (the naive/default approach)
-gets expensive and slow as the history grows. The obvious fix — window the
-history and summarize what falls out of the window with a cheaper model —
-sounds free, but nobody had measured whether it actually costs accuracy
-on this kind of task. So the project built:
+| Memory mode | What the model sees from earlier questions | Accuracy (95% CI) | Gain vs none | McNemar p |
+|---|---|---|---|---|
+| `none` | nothing | 35.0% (20-50) | | |
+| `qa_notes` | earlier questions and answers only | 47.5% (32-62) | +12.5 (−5 to +30) | 0.27 |
+| **`graph`** | notes + automatic recall + `recall` / `search_memory` tools over an entity graph | 50.0% (35-65) | +15.0 (−0.1 to +32) | 0.15 |
+| `full` | every earlier question, tool call and result | 60.0% (45-75) | +25.0 (+10 to +40) | **0.006** |
 
-- A **controlled environment** (the MCP server) where every fact is known
-  and scripted, so any wrong verdict is unambiguously the agent's fault,
-  not bad/ambiguous data.
-- A **held-out evaluation set**, deliberately kept separate from the data
-  used to write the prompt and tune parameters, specifically to avoid the
-  trap of tuning a system until it looks good on the exact data you're
-  measuring it against (see "Held-out evaluation" below — this was a
-  scientific-rigor concern from early on in the project).
+**How to read it, honestly:**
+- Memory helps. Only `full` is statistically distinguishable from no memory.
+- **Graph memory did not beat simple replay in the pilot**, and could not be separated from it at n = 40.
+- The pilot chains were 5 questions long, the best case for `full` (everything still fits in the prompt). The
+  planned main run uses 25-question chains, where full replay overflows its budget and graph memory is meant to
+  hold up. That has not been run, so no claim that graph memory is better is supported yet.
+- Graph mode was slower (54 s vs 22 s per question) and cited worse (82.5% vs 97.5% valid citations).
+- **Conformal escalation certified nothing.** The model reports 90-99 confidence on 108 of 160 answers but is
+  right 62% of the time, so every alert would escalate. The guarantee is working; the confidence signal isn't.
+- Numbers are answer accuracy, not ExCyTIn's published partial-credit reward, and are from a small local model,
+  so they are not comparable to the published chart.
+
+Full report: `results/excytin/pilot_report.md`. Raw runs (without transcripts): `results/excytin/pilot_slim.jsonl`.
 
 ## Architecture
 
 ```
-┌─────────────────────┐        MCP (streamable-http)        ┌───────────────────────┐
-│   InvestigationAgent │ ───────────────────────────────────▶│   MCP server           │
-│   (agent/agent.py)   │◀───────────────────────────────────│   (mcp_server.py)      │
-│  LangChain tool-     │        5 read-only tools             │  FastMCP, port 8000    │
-│  calling loop, GPT-4o│                                      └──────────┬────────────┘
-└──────────┬───────────┘                                                 │
-           │ get_history() / update()                                    ▼
-           ▼                                                   ┌───────────────────┐
-┌──────────────────────┐                                       │  data.py           │
-│   ContextManager      │                                       │  (query layer)      │
-│ (agent/context_manager│                                       └──────────┬─────────┘
-│  .py) — "full" or      │                                                  ▼
-│  "windowed_summary"    │                                       ┌───────────────────┐
-└──────────┬────────────┘                                        │  Postgres (docker)  │
-           │ (windowed_summary only)                             │  db/schema.sql +    │
-           ▼                                                     │  db/seed.sql        │
-   gpt-4o-mini summarizer                                        └───────────────────┘
-           
-┌──────────────────────┐
-│  benchmark.py         │  runs scenarios.json through both context modes,
-│                       │  N times each, and prints a comparison table
-└──────────────────────┘
+ ExCyTIn MySQL (8 incident DBs)        SigmaHQ rules ──compile──▶ SQL
+        │  Defender alerts                    │ detections
+        └──────────────┬──────────────────────┘
+                       ▼
+                 Alert queue (SQLite case store)
+                       ▼
+   LangGraph agent:  run_sql · describe_table · recall · search_memory · threat_intel
+        │   model ⇄ tools loop → submit_verdict (Pydantic: verdict, confidence, claims + evidence ids)
+        │                         ▲
+        │              Case memory (entity graph, lossless, no LLM)
+        ▼
+   confidence ≥ calibrated threshold?  ── yes ──▶ auto-close / auto-confirm
+        └─ no ──▶ human review UI ──▶ labels ──▶ eval set + recalibration
 ```
 
-### 1. The MCP server (`mcp_server.py`, `data.py`, `db.py`, `db/`)
+### Components
 
-A mock security-investigation backend exposing **5 read-only tools** over
-MCP's streamable-http transport, backed by Postgres:
-
-| Tool | Purpose |
-|---|---|
-| `lookup_ip_reputation` | Threat score (0–100) + which feeds flagged an IP |
-| `geolocate_ip` | Country, city, ASN, hosting org for an IP |
-| `query_logs` | Security events (failed logins, port scans, outbound connections, downloads) generated by a source IP |
-| `lookup_cve` | Severity/CVSS/description for a (synthetic) CVE ID |
-| `check_domain_reputation` | Threat score + category (malware / phishing / c2 / suspicious / benign) for a domain |
-
-Every tool is designed so an **unknown IP/domain/CVE is never an error** —
-it returns a well-formed "no data" response (`malicious: false, score: 0`,
-etc.) instead of raising. This matters a lot for the research question:
-an agent that can't distinguish "no data available" from "confirmed
-clean" will over-trust silence, and the held-out set specifically
-includes a scenario testing exactly that.
-
-Data flows: `mcp_server.py` (tool contracts) → `data.py` (query layer,
-never touches the DB directly) → `db.py` (connection pool) → Postgres,
-schema defined in `db/schema.sql`, seeded from `db/seed.sql`. The whole
-thing is containerized (`docker-compose.yml` + `Dockerfile`) so it starts
-with a single `docker compose up --build`.
-
-### 2. The agent (`agent/agent.py`)
-
-`InvestigationAgent` is a LangChain tool-calling agent (`gpt-4o`,
-`temperature=0` for deterministic verdicts) that:
-
-1. Connects to the MCP server and discovers its 5 tools.
-2. Runs a bounded tool-calling loop (max 10 iterations) under a system
-   prompt that enforces an **investigation protocol** — check IP
-   reputation first; if the score is above a threshold, pull logs and
-   geolocation; follow up on any CVE or domain mentioned in the logs;
-   cross-reference everything before concluding.
-3. Produces a fixed-format report ending in a parseable
-   `VERDICT: MALICIOUS | BENIGN | ESCALATE` line.
-
-`investigate(task)` returns the report, the extracted verdict, tool-call
-count, an estimated token cost, and wall-clock duration — everything
-`benchmark.py` needs to score a run.
-
-### 3. The context-management research (`agent/context_manager.py`)
-
-This is the project's actual research contribution. `ContextManager`
-implements two strategies for what history the agent sees on each call,
-and the agent itself is written to be **completely unaware** of which one
-is active — it just calls `get_history()` before investigating and
-`update()` after:
-
-- **`full`** (baseline) — every past tool call/result is kept and resent
-  verbatim, every turn. Simple, but grows unboundedly.
-- **`windowed_summary`** (the paper's approach) — only the last
-  `window_size` tool call/result pairs are kept verbatim; everything older
-  is compressed into a rolling summary by a cheaper model (`gpt-4o-mini`),
-  refreshed after each investigation. The summarizer is explicitly
-  instructed to preserve concrete evidence (exact IPs, scores, timestamps,
-  countries) rather than writing vague summaries like "the IP looked
-  suspicious" — losing specifics is exactly the failure mode this guards
-  against.
-
-A subtle bug surfaced and got fixed during development: without a clear
-task boundary marker in the windowed history, the model could silently
-conflate an *older* investigation with the current one when the window
-spanned a task boundary — confirmed by a case where two adjacent scenarios
-referenced the same domain and the agent re-investigated the wrong one.
-The fix was inserting an explicit `HumanMessage` task marker before each
-task's steps in the windowed view, mirroring what the `full` mode already
-did naturally.
-
-### 4. The benchmark (`agent/benchmark.py`)
-
-Originally, each scenario got a *fresh* `ContextManager`, so
-`get_history()` was always empty and the two modes could never actually
-differ — there was nothing to window or summarize yet. This was caught and
-fixed by **chaining** scenarios: `scenarios.json`'s 18 scenarios are
-grouped into 3 hand-picked chains of 6 (grouped so entity-linked scenarios
-referencing the same IP/domain land in the same chain, and so tool-call
-load is balanced across chains), and each chain runs through *one shared*
-`ContextManager`, so history genuinely accumulates within a chain.
-
-Each chain runs 3 times under each mode (`full` and `windowed_summary`),
-and the benchmark reports: verdict accuracy, average tokens, average
-latency, and average tool-call count, plus a per-scenario breakdown.
-Results are checkpointed to disk after every single run (not just at the
-end) so an interrupted benchmark (e.g. hitting an API rate limit) doesn't
-lose completed work.
-
-**Token accounting note:** `tokens_used` for `windowed_summary` mode
-includes both the main agent's own (estimated) request *and* the real,
-billed token cost of the `gpt-4o-mini` summarizer call that
-`ContextManager.update()` triggers — otherwise `windowed_summary` would
-look artificially cheaper than it actually is, since the summarizer calls
-are real API requests with real cost.
-
-### 5. Held-out evaluation
-
-`scenarios.json` (the 18-scenario dev set) was visible while the agent's
-system prompt was written and while `WINDOW_SIZE` was tuned — so scoring
-well on it only proves the system was built to fit that exact data, not
-that it generalizes. To test generalization honestly, the project built a
-**second, disjoint batch**: `scenarios_holdout.json` (8 scenarios) plus
-`db/seed_holdout.sql` (6 new IPs, 1 new domain, 1 new CVE), covering cases
-the dev set didn't:
-
-- A truly unseeded IP (does the agent treat "no data" as "confirmed
-  clean," which would be wrong?)
-- A reputation score sitting one point past the system prompt's own
-  `score > 30` investigation-trigger threshold
-- A CVE ID that only appears inside log content, not in the task text
-  itself (tests whether the agent actually reads tool output rather than
-  just the task string)
-- A combined brute-force + port-scan pattern from one source
-
-The held-out seed data is **deliberately not wired into**
-`docker-compose.yml`'s auto-init — if it loaded on every `docker compose
-up`, it would silently become more data to develop against, defeating the
-entire point. It's loaded once, manually, at the very end, run through
-the same `benchmark.py` via env-var overrides
-(`SCENARIOS_FILE=../scenarios_holdout.json
-RESULTS_FILE=benchmark_results_holdout.json`), and the project's own
-documentation is explicit that if the held-out results come back bad, the
-correct response is *not* to go tweak the prompt/window size and rerun —
-that would just make the "held-out" set into another dev set. A fresh,
-still-unseen third batch would be needed to test any such change.
-
-## Results
-
-The held-out run (24 investigations per mode: 8 scenarios × 3 repeats)
-gave a clear, somewhat counter-intuitive answer:
-
-| Metric | `full` (baseline) | `windowed_summary` |
+| Component | What it does | Where |
 |---|---|---|
-| Verdict accuracy | **83.3%** (20/24) | 62.5% (15/24) |
-| Avg tokens/investigation | 984 | 2,521 |
-| Avg latency | 25.1s | **11.8s** |
-| Avg tool calls | 2.0 | 2.0 |
+| Data | Loads ExCyTIn's 8 incidents into one MySQL container. The agent connects as a **SELECT-only** user | `triage/excytin/setup_db.py`, `docker-compose.excytin.yml` |
+| SQL tool | One-statement allow-list, no `INTO OUTFILE` / `LOAD_FILE` / `SLEEP`, row and size caps, 30 s timeout | `triage/excytin/db.py` |
+| Agent | LangGraph loop with nudges, a step limit that forces a submit-only tool set, bounded retries, a schema-validated submission, and a prose fallback | `triage/agent.py` |
+| Memory | Regex + column-hint entity extraction (IPs, hosts, accounts, SIDs, hashes, URLs, files, processes), JSON-aware; SQLite graph with provenance; `recall`, `search`. A test checks that any extracted entity is recallable verbatim | `triage/memory.py` |
+| Benchmark | Resumable chains of questions per incident, four memory modes, deterministic grader plus ExCyTIn's judge prompt, injection mode | `triage/excytin/run.py`, `grade.py` |
+| Analysis | Cluster bootstrap, exact McNemar, early-vs-late split, conformal evaluation | `triage/excytin/analyze.py` |
+| Conformal | Learn-then-Test over a fixed 21-point grid with Bonferroni correction | `triage/conformal.py` |
+| Sigma | Sigma→SQL compiler for Defender `Device*` tables; refuses what it can't translate faithfully. 23 SigmaHQ rules vendored | `triage/sigma/` |
+| Threat intel | NVD 2.0, CISA KEV, MITRE ATT&CK; AbuseIPDB and ThreatFox with keys; HTTP record/replay cache; private IPs never sent out | `triage/intel/` |
+| Triage | Alert ingestion (643 alerts), triage agent, case store, CLI, review loop | `triage/alerts.py`, `triage_agent.py`, `cases.py`, `cli.py` |
+| Interfaces | Streamlit analyst UI; MCP server; Docker image | `triage/ui/app.py`, `triage/mcp_server.py`, `Dockerfile.triage` |
+| LLM client | Ollama / LM Studio / OpenAI, response cache (record/replay), spend cap, retry for known Ollama errors, OpenTelemetry tracing | `triage/llm.py`, `triage/tracing.py` |
 
-**Conclusion: context compression *degraded* accuracy on this workload**,
-and — contrary to the whole point of windowing — it did **not** even save
-tokens on the held-out set; the summarizer's own real API calls made
-`windowed_summary` more expensive in tokens, while being roughly twice as
-fast in wall-clock time. Two scenarios (`H06`, `H08`) flipped from
-correct to fully incorrect under `windowed_summary`: the summary lost
-evidence that mattered (e.g. an `ESCALATE`-worthy ambiguity got
-collapsed into a confident wrong verdict). This is a genuine negative
-result for windowed-summary compression on short, evidence-dense
-security-investigation tasks with small tool-call counts — the technique
-may still make sense for longer-horizon tasks where the token savings
-from windowing dominate, but at this task's scale (2 tool calls/
-investigation on average) the summarization overhead outweighs any
-windowing benefit, and losing exact evidence costs real accuracy.
+### Key design decisions
+1. **Retrieve, never compress** (above).
+2. **The model writes SQL, so the database can't trust the model**: allow-list, SELECT-only user (DELETE tested as
+   denied), server-side timeout.
+3. **Citations are checked, not trusted**: an evidence id no tool produced is flagged.
+4. **No calibration, no automation**: until a threshold is certified, everything escalates.
+5. **Honest labels**: alerts in a confirmed incident are malicious; the dataset has no benign labels, so
+   false-positive rate is measured only on reviewer-labelled alerts.
+6. **Free by default and reproducible**: local model, response cache, record/replay so CI needs no key.
 
-## Tools & technology used
+## Data
 
-- **Language:** Python 3.12
-- **LLM:** OpenAI `gpt-4o` (main investigation agent, `temperature=0`)
-  and `gpt-4o-mini` (cheap summarizer in `windowed_summary` mode)
-- **Agent framework:** LangChain (`langchain`, `langchain-openai`,
-  `create_tool_calling_agent` / `AgentExecutor`)
-- **Protocol:** [MCP (Model Context Protocol)](https://modelcontextprotocol.io)
-  via `mcp[cli]` and `langchain-mcp-adapters`, using the
-  **streamable-http** transport
-- **MCP server framework:** `FastMCP` (`mcp.server.fastmcp`)
-- **Database:** PostgreSQL 16, `psycopg2-binary` for the connection pool
-- **Containerization:** Docker + Docker Compose (2 services: `postgres`,
-  `mcp_server`)
-- **Config/secrets:** `python-dotenv`, `.env.example` templates for both
-  the root (DB credentials) and `agent/` (OpenAI key, model, MCP server
-  URL)
-- **Version control:** Git, hosted on GitHub
-  (`Padma-Deepak/context-aware-threat-detection`)
+- **ExCyTIn-Bench** (Wu et al., ICML 2026, MIT): 8 attack incidents from a real Azure tenant under simulated
+  attack, 34-54 Sentinel/Defender tables each, 589 test questions with answers. The agent answers by querying
+  SQL. Not real company data, and IPs are anonymised.
+- **643 alerts** ingested: 618 Defender alerts (610 in confirmed incidents, labelled malicious) + 25 Sigma
+  detections (unlabelled until reviewed).
+- **SigmaHQ** detection rules (Detection Rule License), vendored with attribution under `triage/sigma/rules/`.
+- **Threat intel**: live NVD, CISA KEV and ATT&CK. IP reputation mostly returns "not found" here because the
+  dataset's IPs are anonymised.
 
-## Repo layout
+## Engineering quality
+- **174 tests** with a scripted fake model; 10 of them run against the live ExCyTIn database when it is up.
+- **CI** (GitHub Actions): lint + unit tests in replay mode, Postgres tests, Docker build. Needs no API key.
+- **Secret-scan test** that fails if a key-shaped string is committed.
+- **Bugs found and fixed while building** (each has a regression test): full-history mode replayed tool calls as
+  text and the model imitated it; Ollama's tool-call parse errors killed about 10% of runs at step 0 and would
+  have biased every mode; an IP at the end of a sentence wasn't recognised; JSON with lone backslashes lost
+  hosts and accounts from alert entities; a first conformal method could never certify a threshold.
 
-```
-mcp_server.py, data.py, db.py         MCP server + data access layer
-db/schema.sql, db/seed.sql            Postgres schema + synthetic seed (dev) data
-db/seed_holdout.sql                   Disjoint held-out data (not auto-loaded)
-scenarios.json                        18 verified investigation scenarios (dev set)
-scenarios_holdout.json                8 held-out scenarios, never used to tune the agent
-scripts/verify_scenarios.py           Re-verifies dev scenarios against live data.py
-scripts/verify_scenarios_holdout.py   Re-verifies held-out scenarios against live data.py
-agent/agent.py                        InvestigationAgent (the tool-calling loop)
-agent/context_manager.py              full vs. windowed_summary context strategies
-agent/benchmark.py                    Runs scenarios through both modes, compares
-docker-compose.yml, Dockerfile        Containerized MCP server + Postgres
-```
+## How to run
 
-Note: this folder contains two snapshots of the repo — `repo/` (an earlier
-state, dev-set only, no held-out evaluation yet) and `new-repo/` (the
-current state, with the held-out set, holdout run log, and documentation
-of the full end-to-end setup). `new-repo/` is the up-to-date one and is a
-git checkout of the GitHub repo above.
-
-## How to run it (from `new-repo/`)
+Full runbook: [`EXCYTIN.md`](EXCYTIN.md). Short version, from `new-repo/`:
 
 ```bash
-# 1. Start the MCP server + Postgres backend
-docker compose up --build -d
-
-# 2. Set up the agent
-cd agent
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env   # fill in OPENAI_API_KEY
-
-# 3. Run a single investigation
-python agent.py
-
-# 4. Or run the full benchmark (18 scenarios x 2 context modes x 3 repeats)
-python benchmark.py
+uv venv -p 3.12 .venv && source .venv/bin/activate && uv pip install -r requirements-dev.txt
+pytest -q                                                       # no model, key or database needed
+python -m triage.excytin.setup_db
+EXCYTIN_DATA=~/excytin-data/data_anonymized/incidents docker compose -f docker-compose.excytin.yml up -d
+OLLAMA_CONTEXT_LENGTH=65536 ollama serve &  ollama pull gpt-oss:20b
+python -m triage.excytin.run --memory none,full,graph --per-incident 25 --out results/excytin/main.jsonl
+python -m triage.excytin.analyze results/excytin/main.jsonl
+python -m triage.cli ingest && python -m triage.cli investigate --limit 40
+streamlit run triage/ui/app.py
 ```
+
+## Limitations
+- Only a pilot has been run; graph memory is **not** shown to beat simple replay.
+- Escalation is currently 100% because the model's self-reported confidence is unusable.
+- One small local model; no commercial-model result.
+- ExCyTIn alerts are almost all true positives from simulated attacks in one tenant, unlike a real SOC.
+- Prompt-injection robustness is built and measurable but not yet measured.
+- Entity extraction is regex-based and misses entities with no recognisable shape.
+
+## Next steps
+1. Overnight main run: 25 questions per incident, modes `none`, `full`, `graph`.
+2. Agreement-based confidence (repeated runs) and re-run conformal calibration.
+3. Prompt-injection run and triage on the alert queue; review a few hundred alerts so false-positive rate is
+   measurable.
+4. Small commercial-model check under the spend cap.
+5. Deploy a read-only demo from a snapshot ([`DEPLOY.md`](DEPLOY.md)); record the README GIF.
+
+## Origin: the v1 experiment (synthetic data, context compression)
+
+The first version asked: *can you compress a tool-using agent's history (keep the last N tool calls, summarise
+the rest with a cheaper model) without hurting accuracy?* It used a synthetic threat-intel backend served over
+MCP (5 tools, Postgres), a GPT-4o agent returning `MALICIOUS | BENIGN | ESCALATE`, and a benchmark that chained
+scenarios through one shared context manager. It lives in `agent/`, `mcp_server.py`, `data.py`, `db/` and
+`scenarios*.json`, and is documented in [`V1_BENCHMARK.md`](V1_BENCHMARK.md). Motivated by Lodha et al.,
+*Less Context, Better Agents* (arXiv:2606.10209).
+
+**What v1 found, stated correctly** (an earlier version of this overview overstated it):
+- Held-out: full history 20/24 = 83.3%, windowed 15/24 = 62.5%. The difference is **not statistically
+  significant** (95% CI −58 to +8 points, exact McNemar p = 0.125). On the dev set it pointed the other way
+  (85.2% vs 90.0%, p = 0.69). It is **a direction on eight scenarios, not a result.**
+- The claim that windowing "cost more tokens" is **not valid**: the old token estimator excluded the injected
+  history, the very thing the modes differ in. Real API usage is now recorded; old runs were not re-measured.
+- "The summary lost evidence" is an **untested explanation**: under windowing the agent flipped to `MALICIOUS`
+  (false positives), not to vague answers. Two hypotheses (summary framing; full mode replaying prior reports
+  as few-shot examples) were instrumented but never tested.
+- A never-seen IP was called `BENIGN` in every run of both modes. The backend returned `score: 0`, which looks
+  clean. Unknown entities now return `found: false, score: null`.
+- It also produced the benchmark-validity lessons carried into v2: chain questions so history actually
+  accumulates, keep a held-out set, verify labels against live data, and audit what a metric measures.
+
+**Why that led here:** v1 couldn't establish that compression is safe, and in security an exact IP, SID or
+timestamp matters, so v2 keeps everything and retrieves.
+
+## Credits
+ExCyTIn-Bench (Wu et al., ICML 2026, [microsoft/SecRL](https://github.com/microsoft/SecRL), MIT). Sigma rules:
+[SigmaHQ](https://github.com/SigmaHQ/sigma) (DRL 1.1). Conformal selection: Angelopoulos et al., *Learn then
+Test*, 2021. Repository: `Padma-Deepak/context-aware-threat-detection`.
