@@ -148,7 +148,8 @@ def main(argv=None):
         with lock, open(args.out, "a") as f:
             f.write(json.dumps(rec, default=str) + "\n")
 
-    jobs = [(inc, qs, m, r) for r in range(args.repeats) for m in modes for inc, qs in questions.items()]
+    # Incident-major, so an interrupted run still has every mode for the incidents it finished.
+    jobs = [(inc, qs, m, r) for r in range(args.repeats) for inc, qs in questions.items() for m in modes]
     total = sum(len(qs) for _, qs, _, _ in jobs)
     print(f"{len(jobs)} chains, {total} investigations ({len(done)} already in {args.out})")
     start = time.time()
