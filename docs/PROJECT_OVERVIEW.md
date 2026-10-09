@@ -1,6 +1,6 @@
 # SOC Triage Agent: Project Overview
 
-*Last updated 2026-10-08. Status: **built and tested; only a pilot evaluation has been run.***
+*Last updated 2026-10-10. Status: **built and tested; main memory benchmark run; injection, triage and commercial-model runs still to do.***
 
 ## What this project is
 
@@ -23,40 +23,46 @@ it, and lets the agent look things up.
 |---|---|
 | Real data loaded (ExCyTIn-Bench, 8 incidents, about 2.3 M rows) | ✅ Done, verified |
 | Agent, memory, SQL guards, citations | ✅ Built, 174 tests |
-| Benchmark runner, grader, statistics | ✅ Built; pilot run |
+| Benchmark runner, grader, statistics | ✅ Built and run |
 | Sigma detection compiler | ✅ Built; 1,680 / 1,734 SigmaHQ Windows rules compile |
 | Threat intel (NVD, CISA KEV, ATT&CK) | ✅ Live. AbuseIPDB / ThreatFox need free keys |
-| Conformal escalation | ✅ Built; **automates 0% on the pilot** (model confidence is unusable) |
+| Conformal escalation | ✅ Built; **automates 0%** (model confidence is unusable) |
 | Analyst UI, CLI, MCP server, Docker | ✅ Built; UI checked in a browser |
-| **Pilot benchmark** (5 questions per incident, 4 memory modes) | ✅ Run |
-| **Main benchmark** (25 per incident, longer chains) | ⏳ Not run yet (planned overnight) |
+| **Pilot benchmark** (5 per incident, 4 memory modes) | ✅ Run (too small to separate modes) |
+| **Main benchmark** (25 per incident, 3 modes, 558 runs) | ✅ Run: memory helps; graph ties full replay |
 | Prompt-injection run, triage on the alert queue | ⏳ Built, not run |
 | Commercial-model check, public demo | ⏳ Not done |
 
-## The pilot result (the only model results so far)
+## The main result
 
-`gpt-oss:20b` locally, temperature 0, **5 questions from each of the 8 incidents = 40 per mode**, cost $0.
+`gpt-oss:20b` locally, temperature 0, **186 questions per mode** (25 from each incident, 11 from the small one),
+558 investigations, about 6.5 hours, **$0**. Questions run in order within each incident, so later ones can use
+what earlier ones found.
 
-| Memory mode | What the model sees from earlier questions | Accuracy (95% CI) | Gain vs none | McNemar p |
-|---|---|---|---|---|
-| `none` | nothing | 35.0% (20-50) | | |
-| `qa_notes` | earlier questions and answers only | 47.5% (32-62) | +12.5 (−5 to +30) | 0.27 |
-| **`graph`** | notes + automatic recall + `recall` / `search_memory` tools over an entity graph | 50.0% (35-65) | +15.0 (−0.1 to +32) | 0.15 |
-| `full` | every earlier question, tool call and result | 60.0% (45-75) | +25.0 (+10 to +40) | **0.006** |
+| Memory mode | What the model sees from earlier questions | Accuracy (95% CI) | Gain vs none | McNemar p | Input tokens | Sec |
+|---|---|---|---|---|---|---|
+| `none` | nothing | 38.2% (31-45) | | | 36.0k | 45 |
+| `full` | every earlier question, tool call and result | 46.8% (40-54) | +8.6 (+0.5 to +16.1) | 0.048 | 78.1k | 25 |
+| **`graph`** | prior answers + automatic recall + `recall` / `search_memory` tools over an entity graph | 48.9% (42-56) | +10.8 (+2.7 to +18.8) | 0.013 | 39.3k | 55 |
+
+**Graph vs full replay: +2.2 points (95% CI −6.5 to +10.2), p = 0.71. A tie on accuracy.**
 
 **How to read it, honestly:**
-- Memory helps. Only `full` is statistically distinguishable from no memory.
-- **Graph memory did not beat simple replay in the pilot**, and could not be separated from it at n = 40.
-- The pilot chains were 5 questions long, the best case for `full` (everything still fits in the prompt). The
-  planned main run uses 25-question chains, where full replay overflows its budget and graph memory is meant to
-  hold up. That has not been run, so no claim that graph memory is better is supported yet.
-- Graph mode was slower (54 s vs 22 s per question) and cited worse (82.5% vs 97.5% valid citations).
-- **Conformal escalation certified nothing.** The model reports 90-99 confidence on 108 of 160 answers but is
-  right 62% of the time, so every alert would escalate. The guarantee is working; the confidence signal isn't.
-- Numbers are answer accuracy, not ExCyTIn's published partial-credit reward, and are from a small local model,
-  so they are not comparable to the published chart.
+- Memory helps: both modes beat no memory with intervals that exclude 0 (full only just).
+- **Graph memory is not shown to be more accurate than replaying everything.** It matches it using about half the
+  input tokens, which matters when context is the cost, but it takes about twice as long (9.6 tool calls vs 3.8)
+  and cites slightly worse (83% vs 90% valid citations; 8% of graph runs never called submit vs 0% for full).
+- Late in a chain, `none` fell to 26% while `full` held at 45% and `graph` at 50%; question order is a
+  confound, so this is suggestive only.
+- Results vary a lot by incident (graph: 73% on #38, 16% on #55, 32% on #166), one run per question.
+- **Conformal escalation still certified nothing.** Confidence carries some signal (answers under 90 are right
+  16% of the time, 90 or more 57%, 95 or more 66%) but nowhere near the reliability a 5-10% error target needs,
+  so every alert would escalate. The guarantee works; this confidence signal is too weak.
+- Answer accuracy from a small local model, not ExCyTIn's published partial-credit reward, so not comparable
+  to the published chart.
+- A smaller 5-per-incident pilot (`results/excytin/pilot_report.md`) pointed the same way.
 
-Full report: `results/excytin/pilot_report.md`. Raw runs (without transcripts): `results/excytin/pilot_slim.jsonl`.
+Reports: `results/excytin/main_report.md`. Raw runs (without transcripts): `results/excytin/main_slim.jsonl`.
 
 ## Architecture
 
@@ -133,14 +139,14 @@ pytest -q                                                       # no model, key 
 python -m triage.excytin.setup_db
 EXCYTIN_DATA=~/excytin-data/data_anonymized/incidents docker compose -f docker-compose.excytin.yml up -d
 OLLAMA_CONTEXT_LENGTH=65536 ollama serve &  ollama pull gpt-oss:20b
-python -m triage.excytin.run --memory none,full,graph --per-incident 25 --out results/excytin/main.jsonl
+python -m triage.excytin.run --memory none,full,graph --per-incident 25 --out results/excytin/main.jsonl   # ~6.5 h
 python -m triage.excytin.analyze results/excytin/main.jsonl
 python -m triage.cli ingest && python -m triage.cli investigate --limit 40
 streamlit run triage/ui/app.py
 ```
 
 ## Limitations
-- Only a pilot has been run; graph memory is **not** shown to beat simple replay.
+- Graph memory is **not** shown to be more accurate than simple full replay (a tie, p = 0.71); its advantage is half the input tokens, at twice the time per question.
 - Escalation is currently 100% because the model's self-reported confidence is unusable.
 - One small local model; no commercial-model result.
 - ExCyTIn alerts are almost all true positives from simulated attacks in one tenant, unlike a real SOC.
@@ -148,11 +154,11 @@ streamlit run triage/ui/app.py
 - Entity extraction is regex-based and misses entities with no recognisable shape.
 
 ## Next steps
-1. Overnight main run: 25 questions per incident, modes `none`, `full`, `graph`.
-2. Agreement-based confidence (repeated runs) and re-run conformal calibration.
-3. Prompt-injection run and triage on the alert queue; review a few hundred alerts so false-positive rate is
+1. Agreement-based confidence (repeated runs) and re-run conformal calibration.
+2. Prompt-injection run and triage on the alert queue; review a few hundred alerts so false-positive rate is
    measurable.
-4. Small commercial-model check under the spend cap.
+3. Small commercial-model check under the spend cap.
+4. Look into why graph is weak on incidents #55 and #166 and why 8% of graph runs never submit.
 5. Deploy a read-only demo from a snapshot ([`DEPLOY.md`](DEPLOY.md)); record the README GIF.
 
 ## Origin: the v1 experiment (synthetic data, context compression)

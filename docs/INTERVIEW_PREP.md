@@ -31,13 +31,13 @@ Where something depends on information only you have (your contribution, your mo
 
 ## A0.1 In simple terms
 - **It works.** An agent investigates real attack logs, cites its evidence, and runs free on a laptop.
-- **Memory helps, but graph memory did not clearly win.** No memory 35% → graph 50% → full replay 60% on a
-  40-question-per-mode pilot. Only full replay is statistically separable from no memory.
-- **The pilot was too easy for the simple method** (5-question chains fit in the prompt). The real test
-  (25-question chains) has **not been run yet**.
-- **Auto-closing alerts does not work yet.** The model says "90-99% sure" almost always but is right ~62% of
-  those times, so the safety mechanism (correctly) escalates everything.
-- **Status: built, tested, partially evaluated.** Not "my method beats everything".
+- **Memory helps.** On 186 questions per mode: no memory 38%, full replay 47%, graph memory 49%. Both memory modes
+  are statistically better than none; graph more clearly (p = 0.013 vs 0.048).
+- **Graph memory ties full replay on accuracy** (+2 points, p = 0.71) **but uses half the input tokens**, at about
+  twice the time per question. So it is not "better", it is "as good and cheaper in context".
+- **Auto-closing alerts still does not work.** The model's confidence is too weak a signal: its most confident
+  answers are right only 57-66% of the time, so the safety mechanism (correctly) escalates everything.
+- **Status: built, tested, main memory benchmark run.** Injection, triage-queue and commercial-model runs remain.
 
 ## A0.2 The 30-second pitch
 "I built an LLM triage agent for security alerts. It investigates real Microsoft Sentinel and Defender logs
@@ -46,20 +46,22 @@ intel, and returns a verdict where every claim cites the query that proves it. I
 in a lossless entity graph, and it only closes an alert automatically when a conformal calibration says the
 error rate is bounded; otherwise it escalates to a human whose decision becomes a label. It runs locally
 for free. My first version of this project tried compressing the agent's history with an LLM summary and
-couldn't show it was safe, so this one retrieves instead of compressing. On a pilot, memory raised accuracy
-from 35% to 50-60%, but my graph memory didn't clearly beat simply replaying everything on short chains,
-and I'm running the longer test that should separate them."
+couldn't show it was safe, so this one retrieves instead of compressing. On 186 questions per mode,
+memory raised accuracy from 38% to about 47-49%. My graph memory matched simple full-history replay on
+accuracy but used about half the input tokens; I couldn't show it was more accurate. The model's confidence
+turned out too weak to automate any alerts, so everything still escalates to a human."
 
 ## A0.3 What you may claim, and what you may not
 
 | ✅ You can say (it's true and measured or tested) | ❌ Do not say (not shown) |
 |---|---|
-| Built an agent over real Sentinel/Defender logs with cited, schema-validated verdicts | "Graph memory improved accuracy" (pilot: +15 pts, CI −0.1 to +32, p = 0.15) |
-| Full-history replay raised pilot accuracy 35% → 60% (p = 0.006, n = 40/mode) | "Graph memory beats full replay" (it scored lower: 50% vs 60%) |
-| Sigma→SQL compiler runs 1,680 of 1,734 SigmaHQ Windows rules (97%) in mapped categories | "Conformal escalation reduced analyst workload" (it automated 0%) |
-| 174 tests, record/replay so CI needs no key, secret-scan test, OpenTelemetry tracing | "Prompt-injection robust" (injection test built, **not run**) |
-| Found and fixed two harness bugs that were distorting results (A5 Q9) | "Works on real company data" (one tenant, simulated attacks, anonymised) |
-| Runs free locally; a spend cap guards paid models | Any commercial-model result (none run) |
+| Built an agent over real Sentinel/Defender logs with cited, schema-validated verdicts | "Graph memory is more accurate than full replay" (+2.2 pts, CI −6.5 to +10.2, p = 0.71: a tie) |
+| Memory raised accuracy 38% → 49% for graph (+10.8, CI +2.7 to +18.8, p = 0.013, n = 186/mode) | "Graph memory is cheaper overall" (half the *input tokens*, but ~2x the time and 2.5x the tool calls) |
+| Graph memory matched full replay using about half the input tokens (39k vs 78k per question) | "Conformal escalation reduced analyst workload" (it automated 0%) |
+| Sigma→SQL compiler runs 1,680 of 1,734 SigmaHQ Windows rules (97%) in mapped categories | "Prompt-injection robust" (injection test built, **not run**) |
+| 174 tests, record/replay so CI needs no key, secret-scan test, OpenTelemetry tracing | "Works on real company data" (one tenant, simulated attacks, anonymised) |
+| Found and fixed two harness bugs that were distorting results (A5 Q9) | Any commercial-model result (none run) |
+| Runs free locally; a spend cap guards paid models | Comparisons to ExCyTIn's published chart (different metric, much smaller model) |
 
 ---
 
@@ -78,26 +80,29 @@ and I'm running the longer test that should separate them."
   7 more skip without Postgres. CI runs lint, the unit tests in replay mode (162, no database), the Postgres
   tests, and a Docker build.
 
-**The pilot (the only model results that exist)**
-`gpt-oss:20b` locally via Ollama, temperature 0, **5 questions from each incident = 40 per mode**, $0.
+**The main run** (`gpt-oss:20b` locally via Ollama, temperature 0, **186 questions per mode**: 25 from each incident,
+11 from the small one; 558 investigations; about 6.5 h; $0). Questions run in order within each incident.
 
 | Memory | Accuracy (95% CI) | Gain vs none (CI) | McNemar p | Tool calls | Input tokens | Sec |
 |---|---|---|---|---|---|---|
-| none | 35.0% (20-50) | | | 10.6 | 30.6k | 43 |
-| qa_notes (prior answers only) | 47.5% (32-62) | +12.5 (−5 to +30) | 0.27 | 9.0 | 29.4k | 43 |
-| **graph** | 50.0% (35-65) | +15.0 (−0.1 to +32) | 0.15 | 9.3 | 33.7k | 54 |
-| full replay | 60.0% (45-75) | +25.0 (+10 to +40) | **0.006** | 5.0 | 56.8k | 22 |
+| none | 38.2% (31-45) | | | 10.1 | 36.0k | 45 |
+| full replay | 46.8% (40-54) | +8.6 (+0.5 to +16.1) | 0.048 | 3.8 | 78.1k | 25 |
+| **graph** | 48.9% (42-56) | +10.8 (+2.7 to +18.8) | **0.013** | 9.6 | 39.3k | 55 |
 
-- **Early vs late questions in a chain** (memory can only help later ones): full 54% → 69%, graph 50% → 50%,
-  none 33% → 38%, qa_notes 46% → 50%. Graph showed no late-question gain.
-- Graph used `recall` on **75%** of questions. With recall: 13/30 correct; without: 7/10 (confounded: easier
-  questions needed no recall).
-- Citation validity: full 97.5%, graph 82.5%. All 7 invalid graph citations were the model citing a question
-  id (`i39-q5`) or nothing instead of an evidence id (`i39-q5:3`). A model weakness, not a checker bug.
-- **Confidence:** 108 of 160 answers said 90-99, only **62%** were right. At target errors of 5/10/20% the
-  conformal calibration certified no threshold, so **0% automated**.
-- **Not run yet:** the 25-per-incident main benchmark, prompt injection, triage on the alert queue, repeats
-  for agreement-based confidence, any commercial model.
+**Graph vs full: +2.2 pts (−6.5 to +10.2), p = 0.71. A tie.**
+
+- **Position effect** (quarter of the chain; confounded by question order): last quarter none 26%, full 45%,
+  graph 50%; first quarter none 46%, full 54%, graph 43%.
+- **Graph is slower and a bit sloppier:** 9.6 tool calls and 55 s per question vs 3.8 and 25 s for full; valid
+  citations 83% vs 90%; **8% of graph runs never called submit** (none 6.5%, full 0%). It used `recall` on 87%
+  of questions; accuracy 48% with recall vs 56% without (n = 161 vs 25, not meaningful).
+- **By incident (one run per question):** graph 73% on #38 but 16% on #55 and 32% on #166. Large variance.
+- **Confidence:** answers under 90 are right 16% of the time, 90 or more 57%, 95 or more 66%. Real signal, but far
+  below the 90-95% a 5-10% error target needs, so the conformal calibration certifies nothing: **0% automated**.
+- **Pilot** (5 per incident, 40 per mode): none 35%, qa_notes 47.5%, graph 50%, full 60%. Too small to separate the
+  modes; it overestimated full's advantage.
+- **Not run yet:** prompt injection, triage on the alert queue, repeats for agreement-based confidence, any
+  commercial model.
 
 ---
 
@@ -224,17 +229,22 @@ One span per investigation, model call and tool call. Off by default; `TRIAGE_TR
 **Strong answer:** the A0.2 pitch. Then offer: "I can go into the memory design, the conformal escalation, or the
 Sigma compiler."
 **Follow-ups:** "What's the novel part?" (lossless graph memory + calibrated escalation + auditable citations,
-evaluated on a real benchmark; but be clear the memory did not clearly beat simple replay in the pilot.)
+evaluated on a real benchmark; but be clear graph memory only tied simple full replay on accuracy; its edge is half the input tokens.)
 
 ### Q2. "What did you find?"
-**Strong answer:** "On a 40-question-per-mode pilot with a local 20B model, no memory got 35%, graph memory 50%,
-full history replay 60%. Only full replay is statistically distinguishable from no memory (p = 0.006); graph's
-interval just touches zero. The pilot chains were five questions long, which is the best case for full replay
-because everything still fits in the prompt. The designed experiment uses 25-question chains where full replay
-overflows its budget. I haven't run it yet, so I can't claim graph memory is better."
-**Why:** shows you read your own results and refuse to overclaim.
-**Follow-ups:** "Why did graph not help late questions?" (HYPOTHESIS: the model uses recall 75% of the time but
-often for questions memory couldn't answer, adding steps; no evidence either way yet.)
+**Strong answer:** "On 186 questions per mode with a local 20B model, no memory got 38%, full-history replay 47%,
+and my graph memory 49%. Both memory modes beat no memory with intervals that exclude zero, graph more clearly
+(+10.8 points, CI +2.7 to +18.8, p = 0.013). But graph and full replay are a statistical tie (+2.2, CI −6.5 to
++10.2). The difference is cost: graph used about half the input tokens, 39k vs 78k, while taking about twice as
+long per question. So I can say graph memory matches full replay with a smaller context, not that it's more
+accurate."
+**Why:** shows you read your own results, resist overclaiming, and can name the trade-off.
+**Follow-ups:** "Why is graph slower?" (It makes 9.6 tool calls vs 3.8: full replay hands the model earlier tool
+results directly so it often answers in a few steps, while graph mode has the model query memory and the database.)
+· "Why is graph weak on incidents 55 and 166?" (I don't know; HYPOTHESIS: those chains have many near-duplicate
+entities that recall returns noisily, but I haven't tested it.) · "Is the late-chain gain real?" (Suggestive only;
+question order is a confound.) · "Would graph win on longer chains?" (My 25-question chains didn't show that
+full replay overflowed enough to hurt; I haven't tested chains long enough to force it.)
 
 ### Q3. "Why did you move away from compressing history?"
 **Strong answer:** "v1 tested a rolling LLM summary and, with 8 held-out scenarios, couldn't show it was safe: the
@@ -259,10 +269,10 @@ names; extraction is regex, not NER.) · "What bugs did you find in it?" (A5 Q10
 ### Q5. "Explain the conformal part. Why did it automate nothing?"
 **Strong answer:** "I want to close alerts automatically only where I can bound the error. I use the model's
 self-reported confidence as a score, and Learn-then-Test to find the loosest threshold whose error among
-auto-decided alerts is provably at most α with probability 1−δ. On the pilot, the model reports 90-99
-confidence on 108 of 160 answers but is right 62% of the time, so confidence carries almost no information
-and no threshold is certified: everything escalates. That's the guarantee doing its job. It also tells me
-self-reported confidence from this model is unusable."
+auto-decided alerts is provably at most α with probability 1−δ. On the main run, confidence carries some
+signal (answers under 90 are right 16% of the time, 90 or more 57%, 95 or more 66%) but nowhere near the 90-95%
+reliability a 5-10% error target needs, so no threshold is certified: everything escalates. That's the guarantee
+doing its job. It also tells me this model's self-reported confidence is too weak to automate anything."
 **Why:** shows you understand the guarantee and its failure mode.
 **Follow-ups:** "What would you try next?" (Agreement across repeated runs at temperature > 0, or token
 log-probabilities, as the score.) · "What does the guarantee assume?" (Exchangeability between calibration and
@@ -331,7 +341,7 @@ alerts are also almost all true positives, unlike a real SOC."
 ### Q12. "How do you grade answers?"
 **Strong answer:** "Deterministic match first: normalised golden answer as a whole token inside the submission,
 rejecting long enumerations (more than ten items), as upstream does. Anything rejected can go to ExCyTIn's own
-fuzzy judge prompt, copied verbatim, run on the local model. In the pilot, zero answers were judge-graded
+fuzzy judge prompt, copied verbatim, run on the local model. In my runs zero answers were judge-graded
 (I didn't enable it), so every grade is deterministic."
 **Limits:** deterministic matching may under-credit a correct answer in an odd format, and the fallback can
 over-credit a long prose answer that contains the golden value. I report the share graded by each method.
@@ -346,7 +356,7 @@ success rate."
 
 ### Q14. "Why a local model? Isn't a 20B model weak?"
 **Strong answer:** "Cost: I can't spend on thousands of agent runs, and a local model makes every experiment free
-and reproducible without an API key. It is weaker; absolute accuracy (35-60%) isn't comparable to published
+and reproducible without an API key. It is weaker; absolute accuracy (38-49%) isn't comparable to published
 frontier numbers, and I don't claim it is. The claim is about the *comparison between memory modes on the same
 model*. I also built a spend-capped OpenAI path for a small commercial check; it hasn't been run."
 
@@ -370,16 +380,17 @@ sat in plaintext on disk. The lesson is that example files are the most common p
 **`>> DO THIS FIRST:`** revoke the key at platform.openai.com before you tell this story.
 
 ### Q18. "What would you do next / with another month?"
-**Strong answer:** "Week one: run the 25-question-per-incident benchmark with none, full and graph so I can see
-whether graph holds up when full replay overflows. Week two: agreement-based confidence (repeated runs) and
-re-run the conformal calibration, then run triage on the alert queue and a prompt-injection pass. Week three: a
-small commercial-model check under a spend cap, and review a few hundred alerts so false-positive rate becomes
-measurable. Week four: deploy a read-only demo from a snapshot."
+**Strong answer:** "Week one: get a usable confidence signal, because escalation is 100% today. I'd run repeats at
+temperature above zero and use agreement across runs as the score, then re-run the conformal calibration. Week
+two: run triage on the alert queue and a prompt-injection pass, and review a few hundred alerts so false-positive
+rate becomes measurable. Week three: work out why graph mode is weak on two incidents and why 8% of its runs never
+submit, and run a small commercial-model check under a spend cap. Week four: deploy a read-only demo from a
+snapshot."
 
 ### Q19. "What's the weakest part?"
-**Strong answer:** "The headline claim. The pilot can't separate graph memory from simple replay, and the graph
-mode is slower and cites worse. The confidence signal is unusable, so escalation is currently 100%. And every
-model result is from one local 20B model."
+**Strong answer:** "The headline claim is modest: graph memory ties full replay on accuracy, with half the input
+tokens but twice the time. The confidence signal is too weak, so escalation is currently 100%. Results vary a lot
+by incident, with one run per question. Every model result is from one small local model."
 
 ### Q20. "Did you read ExCyTIn / the conformal paper?"
 `>> YOU FILL THIS IN` Be able to state: ExCyTIn builds questions from investigation graphs over 57 Sentinel
@@ -423,14 +434,15 @@ errors, records usage and cost, then caches the result.
 # A7. Limitations, ranked, and danger areas
 
 ## What's weak (own these)
-1. **No evidence graph memory beats simple replay.** Pilot n = 40 per mode; short chains favour full replay.
-2. **Escalation is 100% today.** Self-reported confidence from this model is uninformative.
+1. **No evidence graph memory beats simple replay.** It ties it on accuracy (p = 0.71); its advantage is half the input tokens.
+2. **Escalation is 100% today.** Self-reported confidence is too weak (57-66% right even when most confident).
 3. **One small local model.** No commercial-model result, no second model family.
 4. **Alert mix isn't realistic.** Almost all alerts are true positives from simulated attacks in one tenant;
    false-positive rate is unmeasurable without reviews.
 5. **Prompt injection and the main benchmark are built but not run.**
-6. **Graph mode is slower and cites worse** (54 s vs 22 s per question; 82.5% vs 97.5% valid citations).
-7. **Deterministic grading** can under- or over-credit; the judge path was not used in the pilot.
+6. **Graph mode is slower, sloppier and uneven** (55 s vs 25 s per question; 83% vs 90% valid citations; 8% never
+   submit; 16% accuracy on incident 55 vs 73% on incident 38).
+7. **Deterministic grading** can under- or over-credit; the judge path was not used in the runs.
 8. **ExCyTIn's IPs are anonymised**, so IP reputation lookups mostly return "not found" here; CVE, KEV and ATT&CK
    enrichment works.
 9. **Concurrency** is threads with one DB connection per thread, not async; cases share one memory, so triage
@@ -438,12 +450,12 @@ errors, records usage and cost, then caches the result.
 10. **Regex entity extraction** misses unshaped free-text entities.
 
 ## Danger areas: where you get exposed
-1. **"Graph memory improved accuracy."** It didn't, not significantly, and `full` scored higher.
+1. **"Graph memory is more accurate than full replay."** It isn't (p = 0.71). Say "matches it with half the input tokens".
 2. **"The conformal system reduces analyst load."** It automated 0%.
 3. **Quoting accuracy next to published ExCyTIn numbers.** Different metric (answer accuracy vs reward) and a
    much smaller model.
 4. **"Prompt-injection robust."** Not run.
-5. **The pilot's early/late split** uses n = 24 vs 16 per mode; don't read trends into it.
+5. **The position/early-late numbers** are confounded by question order; don't read causation into them.
 6. **Whose code is whose** (A8).
 7. **The API key story** if you haven't revoked the key.
 
@@ -485,17 +497,17 @@ identical arms; the pilot's step-0 errors and prose fallbacks.
 - **Question?** Does memory help an investigating agent, and can it close alerts safely?
 - **Data?** ExCyTIn-Bench: 8 incidents, 2.3M rows, 589 test questions.
 - **Memory modes?** none, qa_notes, full, graph.
-- **Pilot result?** 35% / 47.5% / 60% / 50% (none / qa_notes / full / graph), n = 40 each.
-- **Significant?** Only full vs none (p = 0.006).
+- **Main result?** 38.2% / 46.8% / 48.9% (none / full / graph), n = 186 each.
+- **Significant?** Both memory modes beat none (graph p = 0.013, full p = 0.048); graph vs full is a tie (p = 0.71).
 - **Model?** `gpt-oss:20b` locally, $0. **Escalation rate today?** 100%. **Why?** Confidence is uninformative.
 - **Sigma coverage?** 1,680 of 1,734 rules (97%). **Tests?** 174.
-- **What's not done?** Main 25-per-incident run, injection run, triage run, commercial check, demo deploy.
+- **What's not done?** Injection run, triage on the alert queue, agreement-based confidence, commercial check, demo deploy.
 
 ## 20 most likely questions, ranked
 🔥 **VERY LIKELY**
 1. Walk me through your project. (Q1)
 2. What did you find and how confident are you? (Q2)
-3. Why did your graph memory not beat full replay? (Q2, Q19)
+3. Did your graph memory beat full replay? (Q2, Q19)
 4. Why not compress/summarise history? (Q3)
 5. How does the memory work and what does it guarantee? (Q4)
 6. Explain the conformal escalation and why it automated nothing. (Q5)
@@ -532,6 +544,7 @@ these updates since it was written:
 - **`agent/requirements.txt` had two lines merged** (broke `pip install` and CI); fixed.
 - **Test count** is now 174, not 80, and CI has three jobs.
 - **`repo/` is an old duplicate snapshot** of `new-repo/`; ignore it.
+- **v2's main result** (graph memory ties full replay, half the input tokens) is in Part A.
 - **v1's finding** (compression looked worse on held-out, p = 0.125; dev set pointed the other way) is why v2
   stopped compressing.
 - Section numbers below are prefixed `B`; "§" references inside Part B refer to Part B sections.

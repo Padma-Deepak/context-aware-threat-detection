@@ -45,33 +45,43 @@ flowchart LR
 
 ## Results
 
-**Pilot only** (`gpt-oss:20b` locally, 5 questions from each of the 8 incidents = 40 per mode, temperature 0,
-$0). Full report: [results/excytin/pilot_report.md](results/excytin/pilot_report.md); raw runs without
-transcripts: [pilot_slim.jsonl](results/excytin/pilot_slim.jsonl).
+`gpt-oss:20b` running locally, temperature 0, **$0**. ExCyTIn questions asked in order within each incident, so
+later questions can use what earlier ones found. Full report:
+[results/excytin/main_report.md](results/excytin/main_report.md); raw runs without transcripts:
+[main_slim.jsonl](results/excytin/main_slim.jsonl).
 
-| Memory | Accuracy (95% CI) | Paired vs none | McNemar p | Tool calls | Input tokens |
-|---|---|---|---|---|---|
-| none | 35.0% (20-50) | | | 10.6 | 30.6k |
-| qa_notes (prior answers only) | 47.5% (32-62) | +12.5 (-5 to +30) | 0.27 | 9.0 | 29.4k |
-| graph (this project) | 50.0% (35-65) | +15.0 (-0.1 to +32) | 0.15 | 9.3 | 33.7k |
-| full (replay everything) | 60.0% (45-75) | +25.0 (+10 to +40) | 0.006 | 5.0 | 56.8k |
+**Main run: 186 questions per mode (25 from each incident, 11 from the small one), 558 investigations, ~6.5 h.**
+
+| Memory | Accuracy (95% CI) | Paired vs none (95% CI) | McNemar p | Tool calls | Input tokens | Sec |
+|---|---|---|---|---|---|---|
+| none | 38.2% (31-45) | | | 10.1 | 36.0k | 45 |
+| full (replay everything) | 46.8% (40-54) | +8.6 (+0.5 to +16.1) | 0.048 | 3.8 | 78.1k | 25 |
+| **graph** (this project) | 48.9% (42-56) | +10.8 (+2.7 to +18.8) | 0.013 | 9.6 | 39.3k | 55 |
+
+**Graph vs full replay:** +2.2 points (95% CI −6.5 to +10.2), p = 0.71. **A tie on accuracy**; graph memory
+used about half the input tokens (39k vs 78k) but took about twice as long per question.
 
 What this does and does not show:
 
-- Only `full` is distinguishable from no memory, and `graph` is not distinguishable from `full`, `qa_notes`
-  or `none` at n=40. **The pilot does not show that graph memory beats simple replay.**
-- Chains here are only 5 questions long, which is the best case for `full`: everything still fits. The
-  designed test is longer chains (25 per incident), where full replay overflows its budget and graph
-  memory should hold up. That run has not been done.
-- Graph mode used `recall` on 75% of questions and took 9.3 tool calls and 54 s per question versus 5.0 and
-  22 s for `full`. Its citation validity was 82.5% (the model sometimes cites a question id instead of an
-  evidence id), against 97.5% for `full`.
-- **Conformal escalation could not automate anything.** The model reports 90-99 confidence on 108 of 160
-  answers but is right 62% of those times, so no threshold meets a 5-20% error target and everything
-  escalates. That is the guarantee working as designed, and it shows self-reported confidence from this
-  model is unusable. Agreement across repeated runs is the next thing to try.
-- Not yet run: the 25-per-incident main benchmark, prompt injection, triage on the alert queue, and any
-  commercial-model check.
+- **Memory helps.** Both memory modes are separable from no memory; graph more clearly (CI excludes 0 with
+  room to spare, full only just).
+- **Graph memory is not shown to be more accurate than simply replaying everything.** It matches it with half
+  the input tokens, which matters when context is the cost. In the longest-running quarter of each chain
+  (questions 19-25) accuracy was none 26%, full 45%, graph 50%, but the question order is a confound, so treat
+  that as suggestive.
+- **Graph mode is slower and cites worse:** 9.6 tool calls and 55 s per question versus 3.8 and 25 s for full;
+  83% valid citations versus 90%; 8% of runs never called submit (full: 0%). It used `recall` on 87% of
+  questions, and accuracy was 48% with recall versus 56% without (n = 161 vs 25; not meaningful).
+- **Results vary a lot by incident** (graph: 73% on #38 but 16% on #55 and 32% on #166; one run per question).
+- **Conformal escalation still automated 0%.** Confidence carries some signal (answers under 90 are right 16% of
+  the time, 90 or more 57%, 95 or more 66%) but nowhere near the 90-95% reliability a 5-10% error target needs,
+  so no threshold is certified and everything escalates. Agreement across repeated runs is the next thing to try.
+- Numbers are answer accuracy, not ExCyTIn's published partial-credit reward, from a small local model, so they
+  are not comparable to the published chart. Single run per question at temperature 0.
+- An earlier 5-per-incident pilot ([pilot_report.md](results/excytin/pilot_report.md)) pointed the same way but
+  was too small to separate the modes.
+- Not yet run: prompt injection, triage on the alert queue, repeats for agreement-based confidence, any
+  commercial model.
 
 ## Quickstart
 

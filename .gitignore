@@ -15,3 +15,4 @@ build/
 .triage/
 results/excytin/pilot.jsonl
 results/excytin/smoke.jsonl
+results/excytin/main.jsonl
