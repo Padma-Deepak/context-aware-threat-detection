@@ -73,6 +73,9 @@ What this does and does not show:
   83% valid citations versus 90%; 8% of runs never called submit (full: 0%). It used `recall` on 87% of
   questions, and accuracy was 48% with recall versus 56% without (n = 161 vs 25; not meaningful).
 - **Results vary a lot by incident** (graph: 73% on #38 but 16% on #55 and 32% on #166; one run per question).
+  Transcript analysis ([docs/ERROR_ANALYSIS.md](docs/ERROR_ANALYSIS.md)) points to SQL schema errors: 31% of
+  graph's queries fail (87% of those on a column that doesn't exist) versus 10% for full replay, which runs the
+  agent out of steps. Graph runs with no SQL errors scored 77%. This is a correlation, not yet a tested cause.
 - **Conformal escalation still automated 0%.** Confidence carries some signal (answers under 90 are right 16% of
   the time, 90 or more 57%, 95 or more 66%) but nowhere near the 90-95% reliability a 5-10% error target needs,
   so no threshold is certified and everything escalates. Agreement across repeated runs is the next thing to try.

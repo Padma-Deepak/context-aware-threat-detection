@@ -55,6 +55,9 @@ what earlier ones found.
 - Late in a chain, `none` fell to 26% while `full` held at 45% and `graph` at 50%; question order is a
   confound, so this is suggestive only.
 - Results vary a lot by incident (graph: 73% on #38, 16% on #55, 32% on #166), one run per question.
+  [`ERROR_ANALYSIS.md`](ERROR_ANALYSIS.md): the likely cause is SQL schema errors (31% of graph's queries fail,
+  mostly on columns that don't exist, vs 10% for full replay), which exhaust the step limit. A correlation, not
+  yet a tested cause.
 - **Conformal escalation still certified nothing.** Confidence carries some signal (answers under 90 are right
   16% of the time, 90 or more 57%, 95 or more 66%) but nowhere near the reliability a 5-10% error target needs,
   so every alert would escalate. The guarantee works; this confidence signal is too weak.
@@ -158,7 +161,8 @@ streamlit run triage/ui/app.py
 2. Prompt-injection run and triage on the alert queue; review a few hundred alerts so false-positive rate is
    measurable.
 3. Small commercial-model check under the spend cap.
-4. Look into why graph is weak on incidents #55 and #166 and why 8% of graph runs never submit.
+4. Test giving every mode the schema up front (see `ERROR_ANALYSIS.md`) and store successful queries as memory;
+   look into why 8% of graph runs never submit.
 5. Deploy a read-only demo from a snapshot ([`DEPLOY.md`](DEPLOY.md)); record the README GIF.
 
 ## Origin: the v1 experiment (synthetic data, context compression)

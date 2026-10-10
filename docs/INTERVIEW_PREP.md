@@ -241,8 +241,10 @@ accurate."
 **Why:** shows you read your own results, resist overclaiming, and can name the trade-off.
 **Follow-ups:** "Why is graph slower?" (It makes 9.6 tool calls vs 3.8: full replay hands the model earlier tool
 results directly so it often answers in a few steps, while graph mode has the model query memory and the database.)
-· "Why is graph weak on incidents 55 and 166?" (I don't know; HYPOTHESIS: those chains have many near-duplicate
-entities that recall returns noisily, but I haven't tested it.) · "Is the late-chain gain real?" (Suggestive only;
+· "Why is graph weak on incidents 55 and 166?" (Transcripts show 31% of its SQL queries fail, 87% of those on a
+column that doesn't exist, versus 10% for full replay, which replays earlier working queries. Failed queries use up
+the 15-step cap. Graph runs with zero SQL errors scored 77%. It's a correlation, not a tested cause; the test is to
+give every mode the schema up front. See `docs/ERROR_ANALYSIS.md`.) · "Is the late-chain gain real?" (Suggestive only;
 question order is a confound.) · "Would graph win on longer chains?" (My 25-question chains didn't show that
 full replay overflowed enough to hurt; I haven't tested chains long enough to force it.)
 
