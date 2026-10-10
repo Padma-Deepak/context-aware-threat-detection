@@ -158,6 +158,13 @@ class IncidentDB:
                     self._tables = sorted(r[0] for r in cur.fetchall())
         return self._tables
 
+    def schema_text(self) -> str:
+        """Every table with its exact column names, one per line. Giving this to the agent up front removes
+        schema guessing (the most common failure in the main run was 'Unknown column')."""
+        if getattr(self, "_schema_text", None) is None:
+            self._schema_text = "\n".join(self.describe(t) for t in self.tables())
+        return self._schema_text
+
     def describe(self, table: str) -> str:
         if table not in self.tables():
             return f"Unknown table {table!r}. Tables: {', '.join(self.tables())}"

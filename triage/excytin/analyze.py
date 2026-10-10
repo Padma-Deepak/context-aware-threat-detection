@@ -33,7 +33,27 @@ cluster_bootstrap_ci, paired_report = _v1.cluster_bootstrap_ci, _v1.paired_repor
 
 
 def load(path) -> list[dict]:
-    return [json.loads(line) for line in Path(path).read_text().splitlines() if line.strip()]
+    """Read a results file. Runs made with ``--schema full`` get their mode suffixed ``+schema`` so they can sit
+    beside the same mode without the schema (same question ids, so they pair)."""
+    runs = [json.loads(line) for line in Path(path).read_text().splitlines() if line.strip()]
+    for r in runs:
+        if r.get("schema", "off") != "off" and not r["mode"].endswith("+schema"):
+            r["mode"] = f"{r['mode']}+schema"
+    return runs
+
+
+def sql_error_rate(rs: list[dict]):
+    """Share of run_sql calls that failed, from recorded counts or (older files) from saved tool calls."""
+    calls = errors = 0
+    for r in rs:
+        if r.get("sql_calls") is not None:
+            calls += r["sql_calls"]
+            errors += r.get("sql_errors", 0)
+        elif r.get("tool_calls"):
+            sql = [c for c in r["tool_calls"] if c["tool"] == "run_sql"]
+            calls += len(sql)
+            errors += sum(c["output"].startswith("SQL error") for c in sql)
+    return errors / calls if calls else None
 
 
 def _mean(v):
@@ -59,6 +79,7 @@ def summarise(runs: list[dict], baseline: str = "none") -> dict:
             "error_rate": _mean([bool(r.get("error")) for r in rs]),
             "citation_valid_rate": _mean([bool(r.get("citations_valid")) for r in rs]),
             "judge_share": _mean([r.get("grade_method") == "judge" for r in rs]),
+            "sql_error_rate": sql_error_rate(rs),
         }
         # Does memory help later questions more? Compare the first and second half of each chain.
         halves = defaultdict(list)
@@ -90,19 +111,24 @@ def summarise(runs: list[dict], baseline: str = "none") -> dict:
         for mode in by_mode:
             if mode != baseline:
                 out["paired"][mode] = paired_report(runs, baseline, mode, resamples=2000)
+    out["schema_effect"] = {}
+    for mode in by_mode:
+        if not mode.endswith("+schema") and f"{mode}+schema" in by_mode:
+            out["schema_effect"][mode] = paired_report(runs, mode, f"{mode}+schema", resamples=2000)
     return out
 
 
 def format_report(s: dict, baseline: str = "none") -> str:
     pct = lambda x: f"{x:.1%}"  # noqa: E731
     lines = ["## Accuracy by memory mode", "",
-             "| Mode | n | Accuracy (95% CI) | Steps | Input tok | Cost | Sec | Used recall | No submit | Valid citations |",
-             "|---|---|---|---|---|---|---|---|---|---|"]
+             "| Mode | n | Accuracy (95% CI) | Steps | Input tok | Cost | Sec | Used recall | No submit | Valid citations | SQL errors |",
+             "|---|---|---|---|---|---|---|---|---|---|---|"]
     for m, d in s["modes"].items():
         lines.append(f"| {m} | {d['n']} | {pct(d['accuracy'])} ({pct(d['ci'][0])}–{pct(d['ci'][1])}) | "
                      f"{d['avg_steps']:.1f} | {d['avg_input_tokens']:.0f} | ${d['cost_usd']:.2f} | "
                      f"{d['avg_seconds']:.0f} | {pct(d['recall_rate'])} | {pct(d['no_submit_rate'])} | "
-                     f"{pct(d['citation_valid_rate'])} |")
+                     f"{pct(d['citation_valid_rate'])} | "
+                     f"{pct(d['sql_error_rate']) if d.get('sql_error_rate') is not None else 'n/a'} |")
     if s["paired"]:
         lines += ["", f"## Paired comparison against `{baseline}`", "",
                   "| Mode | Pairs | Difference (95% CI) | Only baseline right | Only this right | McNemar p |",
@@ -113,6 +139,16 @@ def format_report(s: dict, baseline: str = "none") -> str:
                              f"{p['diff_ci'][1]:+.1%}) | {p['baseline_only_correct']} | {p['other_only_correct']} | "
                              f"{p['mcnemar_p']:.3f} |")
         lines.append("\nCall a difference real only if its CI excludes 0.")
+    if s.get("schema_effect"):
+        lines += ["", "## Effect of giving the agent the schema up front", "",
+                  "Same questions, same mode, with vs without every table's exact column names.", "",
+                  "| Mode | Pairs | Change with schema (95% CI) | Only without right | Only with right | McNemar p |",
+                  "|---|---|---|---|---|---|"]
+        for m, p in s["schema_effect"].items():
+            if p:
+                lines.append(f"| {m} | {p['n_pairs']} | {p['diff']:+.1%} ({p['diff_ci'][0]:+.1%} to "
+                             f"{p['diff_ci'][1]:+.1%}) | {p['baseline_only_correct']} | {p['other_only_correct']} | "
+                             f"{p['mcnemar_p']:.3f} |")
     lines += ["", "## Early vs late questions in each incident", "",
               "Memory can only help questions that come after others in the same incident.", "",
               "| Mode | Early half | Late half |", "|---|---|---|"]

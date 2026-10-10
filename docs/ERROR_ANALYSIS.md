@@ -40,6 +40,8 @@ Reading the transcripts points to **SQL schema errors**, not the memory design.
 
 ## What to test next
 
+**Pre-registered and set up as experiment E9** in [EXCYTIN.md](EXCYTIN.md) (`--schema full`).
+
 Give every mode the table and column names up front (a real triage tool would know its schema), then re-run
 none, full and graph on the same questions. If graph gains most, schema fumbling was the bottleneck; if all
 modes gain equally, it was not specific to memory. Also: store successful queries as memory so graph can reuse

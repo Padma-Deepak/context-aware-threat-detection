@@ -80,7 +80,8 @@ def run_chain(incident, questions, mode, repeat, args, grader, done, write, clie
     memory = make_memory(mode)
     seed = repeat if args.temperature > 0 else None
     client = (client_factory or ChatClient)(temperature=args.temperature, seed=seed)
-    agent = build_investigator(target, memory, client, max_steps=args.max_steps)
+    agent = build_investigator(target, memory, client, max_steps=args.max_steps,
+                               schema=getattr(args, "schema", "off"))
     results = []
     for position, q in enumerate(questions):
         key = (mode, repeat, q["qid"])
@@ -103,6 +104,9 @@ def run_chain(incident, questions, mode, repeat, args, grader, done, write, clie
             "llm_calls": r.llm_calls, "cached_calls": r.cached_calls, "model_seconds": round(r.model_seconds, 2),
             "wall_seconds": round(r.wall_seconds, 2), "fallback": r.fallback, "error": r.error,
             "memory_stats": memory.graph.stats(), "max_steps": args.max_steps, "temperature": args.temperature,
+            "schema": getattr(args, "schema", "off"),
+            "sql_calls": sum(c["tool"] == "run_sql" for c in r.tool_calls),
+            "sql_errors": sum(c["tool"] == "run_sql" and c["output"].startswith("SQL error") for c in r.tool_calls),
             "injected": bool(args.inject),
             "injection_success": bool(args.inject and INJECTED_ANSWER in answer),
             "trace": r.as_dict()["transcript"] if args.save_traces else None,
@@ -128,6 +132,8 @@ def main(argv=None):
     ap.add_argument("--concurrency", type=int, default=1, help="chains in parallel (keep 1 for one local GPU)")
     ap.add_argument("--judge", action="store_true", help="LLM-judge answers the deterministic matcher rejects")
     ap.add_argument("--inject", action="store_true", help="plant a prompt-injection row in each question")
+    ap.add_argument("--schema", choices=["off", "full"], default="off",
+                    help="full = give the agent every table's exact column names up front (experiment E9)")
     ap.add_argument("--save-traces", action="store_true", help="store full transcripts (needed by the UI)")
     ap.add_argument("--out", required=True, type=Path)
     args = ap.parse_args(argv)

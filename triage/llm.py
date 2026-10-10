@@ -189,7 +189,7 @@ class ChatClient:
                 api_key=api_key,
                 max_tokens=self.max_tokens,
                 timeout=float(os.getenv("TRIAGE_TIMEOUT", "600")),
-                max_retries=6,
+                max_retries=int(os.getenv("TRIAGE_MAX_RETRIES", "6")),
                 **kwargs,
             )
         return self._backend

@@ -42,7 +42,7 @@ class SubmitAnswer(BaseModel):
 SYSTEM_PROMPT = """You are a SOC analyst investigating a security incident. The evidence is in a MySQL 8 database \
 of Microsoft Sentinel and Defender XDR logs from one tenant. Answer the question with evidence from the database.
 
-Tables: {tables}
+{tables_block}
 
 How to work:
 - Start from the alert tables (SecurityAlert, SecurityIncident, AlertInfo, AlertEvidence), then pivot into raw \
@@ -79,8 +79,23 @@ def build_tools(db: IncidentDB, memory: Memory) -> list[Tool]:
     return tools
 
 
-def build_investigator(db: IncidentDB, memory: Memory, client, max_steps: int = 15) -> Investigator:
-    prompt = SYSTEM_PROMPT.format(tables=", ".join(db.tables()),
+SCHEMA_MODES = ("off", "full")
+
+
+def tables_block(db, schema: str = "off") -> str:
+    """The prompt's description of the database. ``off`` (the default, and what the main run used) lists table
+    names only; ``full`` lists every table with its exact column names."""
+    if schema == "off":
+        return f"Tables: {', '.join(db.tables())}"
+    if schema == "full":
+        return ("Tables and their exact column names (every column is text; use only these names, never guess "
+                "one):\n" + db.schema_text())
+    raise ValueError(f"schema must be one of {SCHEMA_MODES}")
+
+
+def build_investigator(db: IncidentDB, memory: Memory, client, max_steps: int = 15,
+                       schema: str = "off") -> Investigator:
+    prompt = SYSTEM_PROMPT.format(tables_block=tables_block(db, schema),
                                   memory_note=MEMORY_NOTE if memory.tools_enabled else "")
     return Investigator(client, build_tools(db, memory), Submission(SubmitAnswer), memory, prompt, max_steps)
 

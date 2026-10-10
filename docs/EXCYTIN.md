@@ -79,6 +79,44 @@ early-vs-late split either way.
 Grading: deterministic match first. Add `--judge` to send the rest to upstream's fuzzy judge prompt on the
 same local model (free). Report which share was judge-graded (the report shows it).
 
+## 2b. Experiment E9: give every mode the schema (pre-registered)
+
+**Why:** the main run's transcripts showed 27-31% of `none` and `graph` SQL queries failing, 87% of the failures on a
+column that does not exist, versus 10% for `full` replay, which sees earlier working queries
+([ERROR_ANALYSIS.md](ERROR_ANALYSIS.md)). Failed queries burn the 15-step cap. That is a correlation; this run tests it.
+
+**What it does:** the same 558 investigations as the main run (same questions, same order, same model and
+settings) except the system prompt lists every table with its exact column names. `--schema off` (the default)
+reproduces the main run's prompt byte for byte (tested), so the two runs pair question for question.
+
+```bash
+export TRIAGE_MODEL=gpt-oss:20b
+python -m triage.excytin.run --memory none,full,graph --per-incident 25 --schema full --save-traces \
+    --out results/excytin/schema.jsonl                       # ~6-8 h
+python -m triage.excytin.analyze results/excytin/main.jsonl results/excytin/schema.jsonl --baseline none --md results/excytin/schema_report.md
+python -m triage.excytin.analyze results/excytin/schema.jsonl --baseline full      # graph vs full, both with the schema
+```
+
+Modes from the schema run appear as `none+schema`, `full+schema`, `graph+schema`.
+
+**Predictions, written before the run** (a 5-run smoke test had already shown SQL errors falling to about 1-2 per
+15 calls, so P1 is close to established; P2-P4 are the open questions):
+- **P1:** SQL error rate falls well below 10% in every mode.
+- **P2:** accuracy rises for every mode, because fewer queries fail and fewer steps are wasted.
+- **P3:** `graph` gains at least as much as `full`, because `full`'s advantage in the main run was partly implicit
+  schema knowledge that every mode now has.
+- **P4:** the gap between `graph` and `full` stays inside noise.
+
+**Decision rules:**
+- "Schema errors were a bottleneck" only if the schema effect's paired 95% CI excludes 0 for at least one mode.
+- "Graph beats full once both know the schema" only if `graph+schema` vs `full+schema` has a paired CI that
+  excludes 0 in graph's favour. Otherwise report a tie.
+- If the schema lifts every mode by a similar amount, schema fumbling was **not** specific to graph memory.
+- If it changes nothing, the weak incidents are weak for another reason (hard questions, huge tables, step cap).
+
+**Known cost and confound:** the schema is about 6-7K tokens resent on every step, so input tokens per question rise
+roughly threefold in every mode. Report accuracy and cost together.
+
 ## 3. Prompt injection
 
 ```bash
