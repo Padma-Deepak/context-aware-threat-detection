@@ -51,17 +51,19 @@ def verify_H01(s):
 def verify_H02(s):
     rep = data.lookup_ip_reputation("203.0.113.5")
     jprint("lookup_ip_reputation('203.0.113.5')", rep)
-    # The point of H02: this IP is deliberately unseeded. "Not found" must
-    # come back as the well-formed zero record, not an error, and it must
-    # be distinguishable from a *confirmed* clean IP (H03) by the caller.
-    ok = rep["malicious"] is False and rep["score"] == 0 and rep["sources_flagging"] == [] and rep["first_seen"] is None
-    return ok, f"malicious={rep['malicious']}, score={rep['score']}, first_seen={rep['first_seen']} -- unseeded, not confirmed-clean"
+    # The point of H02: this IP is deliberately unseeded. "Not found" must come back as a well-formed record
+    # (found=False, score=None), not an error, and it must be distinguishable from a *confirmed* clean IP (H03)
+    # by the caller. (Before 2026-10 it came back as score=0, which read as clean and likely caused H02's
+    # failures.)
+    ok = rep["found"] is False and rep["malicious"] is False and rep["score"] is None \
+        and rep["sources_flagging"] == [] and rep["first_seen"] is None
+    return ok, f"found={rep['found']}, score={rep['score']}, first_seen={rep['first_seen']} -- unseeded, not confirmed-clean"
 
 
 def verify_H03(s):
     rep = data.lookup_ip_reputation("192.0.2.222")
     jprint("lookup_ip_reputation('192.0.2.222')", rep)
-    ok = rep["malicious"] is False and rep["score"] == 0 and rep["first_seen"] is not None
+    ok = rep["found"] is True and rep["malicious"] is False and rep["score"] == 0 and rep["first_seen"] is not None
     return ok, f"malicious={rep['malicious']}, score={rep['score']}, first_seen={rep['first_seen']} (recent, but a real record, unlike H02)"
 
 

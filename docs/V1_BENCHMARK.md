@@ -1,6 +1,11 @@
 # v1: Context-compression benchmark (synthetic data)
 
-> This is the original experiment, kept for reference. The current project is in the [main README](../README.md). v1 could not show that summarising history is safe (its results were inconclusive), and security work needs full recall, so v2 never compresses: it keeps everything and retrieves.
+> This is the original experiment, kept for reference. The current project is in the [main README](../README.md).
+> **Read [RESULTS.md](../RESULTS.md) first:** it holds the final v1 result. After the bugs described there were fixed, the
+> summary-based window **matched** full history's accuracy (30/30 vs 28/30 on a second held-out set, a tie) with 39%
+> fewer tokens. The numbers in the "Results so far" section below are from the **earlier, pre-fix runs**, where windowed
+> looked worse (62.5% vs 83.3%, not statistically significant); they are kept because they are what exposed the bugs.
+> v2 retrieves instead of compressing for a different reason: in security a lossy summary can drop an exact identifier.
 
 [![CI](https://github.com/Padma-Deepak/context-aware-threat-detection/actions/workflows/ci.yml/badge.svg)](https://github.com/Padma-Deepak/context-aware-threat-detection/actions/workflows/ci.yml)
 
@@ -37,7 +42,8 @@ experiment for each (E7a/E7b).
 
 **Token counts from those runs are not comparable across modes.** The original estimator counted only
 each investigation's own text and excluded the injected history, which is exactly what the modes differ in.
-The benchmark now records real API usage; re-run before making any cost claim.
+The benchmark now records real API usage for every LLM call in the agent loop (including re-sent history) plus
+the summarizer's, which is what makes the modes comparable; the later runs in [RESULTS.md](../RESULTS.md) use it.
 
 ## What is in the box
 
@@ -127,7 +133,7 @@ Run the backend and the database tests:
 
 ```bash
 docker compose up --build -d
-for f in db/seed_holdout.sql db/seed_longhorizon.sql db/seed_injection.sql db/seed_generated.sql; do
+for f in db/seed_holdout.sql db/seed_holdout2.sql db/seed_longhorizon.sql db/seed_injection.sql db/seed_generated.sql; do
   docker compose exec -T postgres psql -U secinvest -d secinvest -v ON_ERROR_STOP=1 < "$f"
 done
 export DATABASE_URL=postgresql://secinvest:secinvest_local_only@localhost:5432/secinvest
@@ -147,7 +153,9 @@ Run an investigation or the benchmark (needs a key): see [`docs/EXPERIMENTS.md`]
 | `PROMPT_VERSION` | `v1` | `v1` original, `v2` evidence rules + ATT&CK |
 | `MODES` | `full,windowed_summary` | Comma-separated strategies to run |
 | `WINDOW_SIZE` / `RUNS_PER_CHAIN` | `2` / `3` | Benchmark size |
-| `SUMMARY_PROMPT` | `v2` | `v1` = legacy wording (mentions "employee"), kept so old results reproduce |
+| `LONG_CHAIN` | unset | `1` runs every scenario in the file as one chain so history keeps accumulating (the long-horizon setting) |
+| `HISTORY_FORMAT` | `native` | `native` replays past tool calls as real tool calls + results; `text` is the original text rendering, kept only to reproduce early runs |
+| `SUMMARY_PROMPT` | `v3` | `v3` = one line per completed investigation, incremental, closed-case framing (default); `v2` = domain-correct whole-history summary; `v1` = legacy wording (mentions "employee"), kept so old results reproduce |
 | `INCLUDE_REPORTS` | `0` | Replay last K prior reports in compressed modes |
 | `MAX_ITERATIONS` | `10` | Agent tool-call cap per investigation |
 | `SCENARIOS_FILE` / `RESULTS_FILE` | dev set / `benchmark_results.json` | Input scenarios and output path |

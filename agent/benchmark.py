@@ -34,6 +34,7 @@ import json
 import asyncio
 import time
 import os
+import traceback
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -47,6 +48,9 @@ load_dotenv()
 # ──────────────────────────────────────────────────────────────
 
 RUNS_PER_CHAIN = int(os.getenv("RUNS_PER_CHAIN", "3"))   # repeats of each chain per mode
+# LONG_CHAIN=1 runs every scenario in the file as ONE chain through one ContextManager, so history keeps
+# accumulating for the whole file: the long-horizon setting context compression is meant for.
+LONG_CHAIN = os.getenv("LONG_CHAIN") == "1"
 WINDOW_SIZE = int(os.getenv("WINDOW_SIZE", "2"))          # lowered from 5: real scenarios cap at 4 tool
                              # calls, so window_size=5 never triggered summarization
 
@@ -94,7 +98,9 @@ def run_cost(result) -> float:
 SPENT_USD = 0.0
 
 INCLUDE_REPORTS = int(os.getenv("INCLUDE_REPORTS", "0"))   # replay last K prior reports in compressed modes
-SUMMARY_PROMPT = os.getenv("SUMMARY_PROMPT", "v2")   # v1 = legacy wording used in the original results
+SUMMARY_PROMPT = os.getenv("SUMMARY_PROMPT", "v3")   # v3 = per-investigation incremental log (default); v1 = legacy wording
+# native = real tool_calls + ToolMessage history (default); text = the original text rendering, only to reproduce early runs
+HISTORY_FORMAT = os.getenv("HISTORY_FORMAT", "native")
 
 # Chains group related scenarios so they can share one ContextManager and
 # actually build up history. Grouped by:
@@ -189,6 +195,7 @@ def build_chains(scenarios: list[dict]) -> list[list[dict]]:
     Groups scenarios into chains that will share one ContextManager.
 
     Priority:
+      0. LONG_CHAIN=1: everything in the file is one chain.
       1. If scenarios carry a "chain" key, group by it (file order preserved).
       2. If the loaded scenarios match CHAIN_SCENARIO_IDS (the 18-scenario dev
          set), use that hand-picked grouping.
@@ -196,6 +203,8 @@ def build_chains(scenarios: list[dict]) -> list[list[dict]]:
          the original held-out run (scenarios_holdout.json) used, so it ran as
          ONE chain of 8, not three chains of 6 like the dev set.
     """
+    if LONG_CHAIN:
+        return [scenarios]
     if any("chain" in s for s in scenarios):
         groups: dict = {}
         for s in scenarios:
@@ -226,7 +235,7 @@ async def run_chain(chain: list[dict], mode: str, run_number: int, all_results: 
     already-completed turns.
     """
     context_manager = ContextManager(mode=mode, window_size=WINDOW_SIZE, summary_prompt=SUMMARY_PROMPT,
-                                     include_reports=INCLUDE_REPORTS)
+                                     include_reports=INCLUDE_REPORTS, history_format=HISTORY_FORMAT)
     agent = InvestigationAgent(context_manager=context_manager)
 
     for position, scenario in enumerate(chain, start=1):
@@ -343,6 +352,8 @@ def compute_metrics(results: list[RunResult], mode: str) -> dict:
     avg_tokens = sum(r.tokens for r in mode_results) / total
     avg_duration = sum(r.duration for r in mode_results) / total
     avg_tool_calls = sum(r.tool_calls for r in mode_results) / total
+    avg_input_tokens = sum(r.input_tokens for r in mode_results) / total
+    avg_summarizer_tokens = sum(r.summarizer_tokens for r in mode_results) / total
 
     # Per-scenario breakdown
     scenario_ids = list(dict.fromkeys(r.scenario_id for r in mode_results))
@@ -364,6 +375,8 @@ def compute_metrics(results: list[RunResult], mode: str) -> dict:
         "avg_tokens": avg_tokens,
         "avg_duration": avg_duration,
         "avg_tool_calls": avg_tool_calls,
+        "avg_input_tokens": avg_input_tokens,
+        "avg_summarizer_tokens": avg_summarizer_tokens,
         "per_scenario": per_scenario
     }
 
@@ -393,6 +406,8 @@ def print_results(metrics_by_mode: dict, scenarios: list[dict], chains: list[lis
     row("Avg Tokens", "avg_tokens", ".0f")
     row("Avg Latency (s)", "avg_duration", ".2f")
     row("Avg Tool Calls", "avg_tool_calls", ".1f")
+    row("  of which prompt tokens", "avg_input_tokens", ".0f")
+    row("  of which summarizer", "avg_summarizer_tokens", ".0f")
 
     print(f"\n{'─'*60}\nPer-scenario correct runs:\n{'─'*60}")
     print(f"  {'ID':<8} {'Truth':<11}" + "".join(f"{m[:14]:>16}" for m in modes))
@@ -456,6 +471,8 @@ def _config() -> dict:
         "prompt_version": os.getenv("PROMPT_VERSION", "v1"),
         "summary_prompt": SUMMARY_PROMPT,
         "include_reports": INCLUDE_REPORTS,
+        "history_format": HISTORY_FORMAT,
+        "long_chain": LONG_CHAIN,
         "scenarios_file": str(SCENARIOS_FILE),
         "max_cost_usd": MAX_COST_USD,
         "spent_usd_estimate": round(SPENT_USD, 4),
@@ -520,7 +537,8 @@ async def main():
         print(f"\n💰 Stopped by budget guard: {e}. {len(all_results)} run(s) checkpointed to {RESULTS_FILE}.")
         return
     except Exception as e:
-        print(f"\n⚠️  Benchmark interrupted: {e}")
+        traceback.print_exc()
+        print(f"\n⚠️  Benchmark interrupted: {e!r}")
         print(f"   {len(all_results)} run(s) completed and checkpointed to {RESULTS_FILE}.")
         print("   Re-run to continue collecting data (note: this restarts from scratch, it does not resume).")
         return

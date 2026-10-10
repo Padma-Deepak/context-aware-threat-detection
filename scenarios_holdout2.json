@@ -1,0 +1,82 @@
+[
+  {
+    "id": "J01",
+    "task": "Host ws-210 is making periodic outbound connections involving 203.0.113.17. Investigate.",
+    "ground_truth": "MALICIOUS",
+    "difficulty": "easy",
+    "expected_tools": ["lookup_ip_reputation", "query_logs", "check_domain_reputation"],
+    "rationale": "lookup_ip_reputation: malicious=true, score 94. query_logs shows fixed-size periodic beacons and an off-hours upload to telemetry-cache-node.net, which check_domain_reputation confirms as malicious c2."
+  },
+  {
+    "id": "J02",
+    "task": "Our print server 192.0.2.41 showed up in an outbound traffic report. Anything to worry about?",
+    "ground_truth": "BENIGN",
+    "difficulty": "easy",
+    "expected_tools": ["lookup_ip_reputation"],
+    "rationale": "lookup_ip_reputation: malicious=false, score 2, no sources, first seen 2020. The only log is a routine firmware check-in."
+  },
+  {
+    "id": "J03",
+    "task": "Several employees reported a suspicious payroll email linking to a site hosted on 198.51.100.44. Assess the threat.",
+    "ground_truth": "MALICIOUS",
+    "difficulty": "medium",
+    "expected_tools": ["lookup_ip_reputation", "query_logs", "check_domain_reputation"],
+    "rationale": "lookup_ip_reputation: malicious=true, score 80. query_logs shows employees visiting payroll-portal-verify.com and one credential submission; check_domain_reputation confirms that domain as malicious phishing."
+  },
+  {
+    "id": "J04",
+    "task": "203.0.113.140 has a moderate score in our feed and nothing conclusive on its own. Investigate whether it's actually a problem.",
+    "ground_truth": "MALICIOUS",
+    "difficulty": "hard",
+    "expected_tools": ["lookup_ip_reputation", "query_logs", "check_domain_reputation"],
+    "rationale": "Reputation alone is inconclusive (malicious=false, score 40, one source). query_logs shows a connection to telemetry-cache-node.net with the same 312-byte payload pattern seen in J01, and check_domain_reputation confirms that domain as malicious c2. Cross-referencing, not reputation, decides it."
+  },
+  {
+    "id": "J05",
+    "task": "A developer asked whether docs-mirror-cdn.org is safe to allow through the proxy.",
+    "ground_truth": "BENIGN",
+    "difficulty": "easy",
+    "expected_tools": ["check_domain_reputation"],
+    "rationale": "check_domain_reputation: malicious=false, category=benign, score 1, no sources, first seen 2017."
+  },
+  {
+    "id": "J06",
+    "task": "fastupdate-dl.xyz appeared in a proxy log. Should we block it outright?",
+    "ground_truth": "ESCALATE",
+    "difficulty": "ambiguous",
+    "expected_tools": ["check_domain_reputation"],
+    "rationale": "check_domain_reputation: malicious=false, category=suspicious, score 50, no sources. Not clean, not confirmed -- needs a human decision."
+  },
+  {
+    "id": "J07",
+    "task": "Our web console web-console-01 logged odd file-preview requests from 198.51.100.121. Investigate and identify any vulnerability involved.",
+    "ground_truth": "MALICIOUS",
+    "difficulty": "hard",
+    "expected_tools": ["lookup_ip_reputation", "query_logs", "lookup_cve"],
+    "rationale": "lookup_ip_reputation: malicious=true, score 88. query_logs shows a port scan then path-traversal requests citing CVE-2026-90022, which lookup_cve confirms as HIGH severity (cvss 8.4) arbitrary file read."
+  },
+  {
+    "id": "J08",
+    "task": "Our build agent 192.0.2.63 has a reputation score above our usual comfort level. Investigate and tell us whether to act.",
+    "ground_truth": "BENIGN",
+    "difficulty": "medium",
+    "expected_tools": ["lookup_ip_reputation", "geolocate_ip", "query_logs"],
+    "rationale": "Score 35 (above the > 30 trigger, one GreyNoise flag), but geolocation shows Example Corp's own build farm and logs show only checksum-verified dependency downloads from a benign domain and routine CI uploads."
+  },
+  {
+    "id": "J09",
+    "task": "198.51.100.230 is sweeping our 10.40.0.0/24 subnet. Assess and recommend an action.",
+    "ground_truth": "MALICIOUS",
+    "difficulty": "easy",
+    "expected_tools": ["lookup_ip_reputation", "query_logs"],
+    "rationale": "lookup_ip_reputation: malicious=true, score 90. query_logs shows port scans and telnet default-credential attempts."
+  },
+  {
+    "id": "J10",
+    "task": "192.0.2.180 is linked to an installer one of our hosts downloaded. Is this a confirmed threat?",
+    "ground_truth": "ESCALATE",
+    "difficulty": "ambiguous",
+    "expected_tools": ["lookup_ip_reputation", "query_logs", "check_domain_reputation"],
+    "rationale": "IP: malicious=false, score 45, no sources. The one log is an unsigned installer from fastupdate-dl.xyz, which is suspicious but unconfirmed (score 50, no sources). Thin evidence on both sides."
+  }
+]

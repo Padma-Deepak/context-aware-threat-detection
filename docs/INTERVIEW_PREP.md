@@ -45,8 +45,9 @@ from ExCyTIn-Bench (eight attack incidents, about 2.3 million rows) through read
 intel, and returns a verdict where every claim cites the query that proves it. It remembers earlier cases
 in a lossless entity graph, and it only closes an alert automatically when a conformal calibration says the
 error rate is bounded; otherwise it escalates to a human whose decision becomes a label. It runs locally
-for free. My first version of this project tried compressing the agent's history with an LLM summary and
-couldn't show it was safe, so this one retrieves instead of compressing. On 186 questions per mode,
+for free. My first version of this project tested compressing the agent's history with an LLM summary; once its
+bugs were fixed that matched full history on a small synthetic set with 39% fewer tokens, but I wanted memory
+that can't drop an exact identifier, so this one retrieves instead of compressing. On 186 questions per mode,
 memory raised accuracy from 38% to about 47-49%. My graph memory matched simple full-history replay on
 accuracy but used about half the input tokens; I couldn't show it was more accurate. The model's confidence
 turned out too weak to automate any alerts, so everything still escalates to a human."
@@ -147,8 +148,9 @@ prefix messages and (for graph mode) extra tools.
 
 # A3. Design decisions and why
 
-1. **Retrieve, never compress.** v1 compressed history with an LLM summary and could not show it was safe
-   (inconclusive). In security, an exact IP, SID or timestamp matters, so memory keeps every tool result
+1. **Retrieve, never compress.** v1 compressed history with an LLM summary; after its bugs were fixed that
+   matched full history's accuracy with 39% fewer tokens on a small synthetic set, so compression isn't ruled out.
+   But in security an exact IP, SID or timestamp matters and a lossy summary can drop it, so memory keeps every tool result
    verbatim and indexed; the agent asks for what it needs. Extraction is regex plus column hints, so
    building memory costs nothing and nothing is paraphrased.
 2. **The model writes SQL, so the database can't trust the model.** Three independent guards: a statement
@@ -249,10 +251,14 @@ question order is a confound.) · "Would graph win on longer chains?" (My 25-que
 full replay overflowed enough to hurt; I haven't tested chains long enough to force it.)
 
 ### Q3. "Why did you move away from compressing history?"
-**Strong answer:** "v1 tested a rolling LLM summary and, with 8 held-out scenarios, couldn't show it was safe: the
-confidence interval on the difference included zero and the dev set pointed the other way. For security you
-can't risk a summary rewriting an IP or timestamp, so v2 never compresses: it stores every tool result
-verbatim, indexes the entities, and lets the agent retrieve."
+**Strong answer:** "It wasn't that compression failed. v1 tested a rolling LLM summary: the first held-out run had
+it worse, but not significantly (62.5% vs 83.3%, p = 0.125), and debugging that run exposed real defects in my
+token metric, the summarizer prompt and the baseline. After fixing them, a second held-out set had the summary
+window matching full history (30/30 vs 28/30, a tie) with 39% fewer tokens. So compression works on short
+synthetic tasks. For security, though, a summary can rewrite an IP or timestamp, and I wanted memory with a
+recall guarantee I can test, so v2 stores every tool result verbatim, indexes the entities, and lets the agent
+retrieve. v2's own result has the same shape: graph memory ties full replay on accuracy at about half the input
+tokens."
 **Follow-ups:** "Is that just RAG?" (Similar spirit; the difference is deterministic entity extraction with
 provenance, so every recalled fact comes with the exact source row and the question and step that produced it,
 and there's no embedding model or LLM in the memory path.)
@@ -322,7 +328,8 @@ convenience and an early, readable error.)
    mode down for reasons unrelated to memory. I added a retry with a reminder, kept the 33 finished results,
    and re-ran the failures."
 **Why:** you can tell the difference between a model limitation and a harness artifact, and you fixed the
-harness before reading results.
+harness before reading results. (v1 hit the same text-replay bug independently and fixed it the same way, so
+it's a known trap: models imitate history that is rendered as text instead of as real tool calls.)
 **Follow-ups:** "How do you know there aren't more?" (I don't; I report error rate and no-submit rate per mode,
 and keep the raw transcripts. Say it plainly.)
 
@@ -547,8 +554,13 @@ these updates since it was written:
 - **Test count** is now 174, not 80, and CI has three jobs.
 - **`repo/` is an old duplicate snapshot** of `new-repo/`; ignore it.
 - **v2's main result** (graph memory ties full replay, half the input tokens) is in Part A.
-- **v1's finding** (compression looked worse on held-out, p = 0.125; dev set pointed the other way) is why v2
-  stopped compressing.
+- **v1's final result** is in [RESULTS.md](../RESULTS.md) and **supersedes the early numbers in this Part B**: after
+  fixing the token metric, the summarizer prompt/framing, incremental summarising and a text-replay bug in `full`
+  mode, the summary window **matched** full history on a second held-out set (30/30 vs 28/30, a tie, about 10
+  effective items) with **39% fewer tokens** (60% fewer on the last investigation). The early 62.5% vs 83.3% result
+  (not significant, p = 0.125) is what exposed those bugs. The B0 corrections below describe the early runs.
+- **v2 retrieves rather than compresses** as a design choice for security (exact identifiers), not because v1's
+  compression failed.
 - Section numbers below are prefixed `B`; "§" references inside Part B refer to Part B sections.
 
 ---
@@ -1520,7 +1532,8 @@ replaying prior reports closes it — in which case the story is few-shot calibr
 
 ## B13.3 Updated danger areas (add to §12)
 
-1. **Don't say "compression degraded accuracy."** Say "a direction on eight scenarios; p = 0.125".
+1. **Don't say "compression degraded accuracy."** The early run was a direction on eight scenarios (p = 0.125) and
+   was superseded: after the fixes, the summary window matched full history with 39% fewer tokens ([RESULTS.md](../RESULTS.md)).
 2. **Don't claim the new strategy or prompt v2 works.** They are built and tested, not benchmarked.
 3. **Don't quote old token numbers as a comparison.** New runs record real usage; old ones don't.
 4. **"Did you run it against real feeds / a second model?"** No: interfaces exist for the second model; feeds are not done.

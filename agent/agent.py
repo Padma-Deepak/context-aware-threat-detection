@@ -111,7 +111,11 @@ class InvestigationAgent:
                 "report": str,
                 "verdict": str,          # MALICIOUS / BENIGN / ESCALATE / UNKNOWN
                 "tool_calls": int,
-                "tokens_used": int,
+                "tokens_used": int,          # agent tokens (real API usage when reported) + summarizer tokens
+                "agent_tokens": int, "agent_input_tokens": int, "agent_output_tokens": int,
+                "summarizer_tokens": int,
+                "tokens_source": str,        # "api" or "estimate"
+                "llm_calls": int, "parsed": dict,
                 "duration_seconds": float,
                 "intermediate_steps": list
             }
@@ -134,12 +138,14 @@ class InvestigationAgent:
         )
 
         # Update context manager with what just happened
+        summarizer_tokens = 0
         if self.context_manager:
             self.context_manager.update(
                 task=task,
                 steps=response.get("intermediate_steps", []),
                 output=response["output"]
             )
+            summarizer_tokens = self.context_manager.pop_summarizer_tokens()
 
         duration = time.time() - start_time
         report = response["output"]
@@ -154,9 +160,8 @@ class InvestigationAgent:
         else:
             agent_tokens, tokens_source = self._estimate_tokens(task, report, intermediate_steps), "estimate"
 
-        # windowed_summary's update() above may have made a billed summarizer
-        # call; fold its real usage in so windowing is not made to look free.
-        summarizer_tokens = self.context_manager.pop_summarizer_tokens() if self.context_manager else 0
+        # summarizer_tokens (popped above, right after update()) is windowed_summary's real billed summarizer
+        # usage; folding it in keeps windowing from looking free. Popping it twice would silently read 0.
         tokens_used = agent_tokens + summarizer_tokens
 
         return {
@@ -179,6 +184,7 @@ class InvestigationAgent:
     def _extract_verdict(self, report: str) -> str:
         """Last VERDICT line in the report, or UNKNOWN (see schemas.extract_verdict)."""
         return extract_verdict(report)
+
 
     def _estimate_tokens(self, task, report, steps) -> int:
         """

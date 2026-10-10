@@ -21,10 +21,10 @@ INSERT INTO ip_reputation (ip, malicious, score, sources_flagging, first_seen) V
     ('203.0.113.91', TRUE, 86, ARRAY['AbuseIPDB', 'SpamhausSynthetic']::TEXT[], '2026-07-25'),
     ('198.51.100.187', FALSE, 39, ARRAY['GreyNoise']::TEXT[], '2023-09-12'),
     ('192.0.2.28', FALSE, 41, ARRAY['GreyNoise']::TEXT[], '2024-01-11'),
-    ('192.0.2.41', FALSE, 5, ARRAY[]::TEXT[], '2024-04-25'),
-    ('192.0.2.87', TRUE, 90, ARRAY['AbuseIPDB', 'VirusTotal', 'GreyNoise', 'SpamhausSynthetic']::TEXT[], '2026-06-22'),
-    ('203.0.113.38', FALSE, 12, ARRAY[]::TEXT[], '2023-03-13'),
-    ('198.51.100.104', FALSE, 8, ARRAY[]::TEXT[], '2022-07-19');
+    ('203.0.113.2', FALSE, 5, ARRAY[]::TEXT[], '2024-04-25'),
+    ('192.0.2.182', TRUE, 90, ARRAY['AbuseIPDB', 'VirusTotal', 'GreyNoise', 'SpamhausSynthetic']::TEXT[], '2026-06-22'),
+    ('198.51.100.104', FALSE, 12, ARRAY[]::TEXT[], '2023-03-13'),
+    ('192.0.2.79', FALSE, 8, ARRAY[]::TEXT[], '2022-07-19');
 INSERT INTO ip_geolocation (ip, country, city, asn, org) VALUES
     ('198.51.100.220', 'Kenya', 'Nairobi', 'AS65022', 'Savanna Data Ltd (synthetic)'),
     ('198.51.100.162', 'Japan', 'Sendai', 'AS65066', 'Tohoku Net KK (synthetic)'),
@@ -44,10 +44,10 @@ INSERT INTO ip_geolocation (ip, country, city, asn, org) VALUES
     ('203.0.113.91', 'Turkey', 'Izmir', 'AS65088', 'Ege Bilisim AS (synthetic)'),
     ('198.51.100.187', 'Japan', 'Sendai', 'AS65066', 'Tohoku Net KK (synthetic)'),
     ('192.0.2.28', 'Turkey', 'Izmir', 'AS65088', 'Ege Bilisim AS (synthetic)'),
-    ('192.0.2.41', 'Turkey', 'Izmir', 'AS65088', 'Ege Bilisim AS (synthetic)'),
-    ('192.0.2.87', 'Kenya', 'Nairobi', 'AS65022', 'Savanna Data Ltd (synthetic)'),
-    ('203.0.113.38', 'Kenya', 'Nairobi', 'AS65022', 'Savanna Data Ltd (synthetic)'),
-    ('198.51.100.104', 'Kenya', 'Nairobi', 'AS65022', 'Savanna Data Ltd (synthetic)');
+    ('203.0.113.2', 'Turkey', 'Izmir', 'AS65088', 'Ege Bilisim AS (synthetic)'),
+    ('192.0.2.182', 'Kenya', 'Nairobi', 'AS65022', 'Savanna Data Ltd (synthetic)'),
+    ('198.51.100.104', 'Kenya', 'Nairobi', 'AS65022', 'Savanna Data Ltd (synthetic)'),
+    ('192.0.2.79', 'Kenya', 'Nairobi', 'AS65022', 'Savanna Data Ltd (synthetic)');
 INSERT INTO domain_reputation (domain, malicious, category, score, sources_flagging, first_seen) VALUES
     ('quartz-cloud.info', TRUE, 'malware', 89, ARRAY['SpamhausSynthetic', 'GreyNoise', 'AbuseIPDB']::TEXT[], '2026-08-23'),
     ('willow-relay.net', FALSE, 'suspicious', 54, ARRAY['GreyNoise']::TEXT[], '2026-05-13'),
@@ -96,9 +96,9 @@ INSERT INTO security_logs (log_id, timestamp, event_type, src, detail) VALUES
     ('LOG-G023', now() - interval '0.5 hours', 'outbound_conn', '203.0.113.91', 'Repeated large TLS uploads from mail-01 to this address, ending in a connection reset.'),
     ('LOG-G024', now() - interval '5.0 hours', 'outbound_conn', '198.51.100.187', 'Routine outbound HTTPS to a public CDN, nothing unusual.'),
     ('LOG-G025', now() - interval '11.7 hours', 'outbound_conn', '192.0.2.28', 'Routine outbound HTTPS to a public CDN, nothing unusual.'),
-    ('LOG-G026', now() - interval '15.5 hours', 'file_download', '192.0.2.41', 'Downloaded a routine vendor update package, signature verified.'),
-    ('LOG-G027', now() - interval '3.6 hours', 'port_scan', '192.0.2.87', 'TCP SYN scan across 1-1024 on db-02.'),
-    ('LOG-G028', now() - interval '1.9 hours', 'outbound_conn', '192.0.2.87', 'Exploit attempt against an exposed service on db-02 immediately after the scan.'),
-    ('LOG-G029', now() - interval '4.3 hours', 'file_download', '203.0.113.38', 'Downloaded a routine vendor update package, signature verified.'),
-    ('LOG-G030', now() - interval '10.4 hours', 'file_download', '198.51.100.104', 'Downloaded a routine vendor update package, signature verified.');
+    ('LOG-G026', now() - interval '15.5 hours', 'file_download', '203.0.113.2', 'Downloaded a routine vendor update package, signature verified.'),
+    ('LOG-G027', now() - interval '3.6 hours', 'port_scan', '192.0.2.182', 'TCP SYN scan across 1-1024 on db-02.'),
+    ('LOG-G028', now() - interval '1.9 hours', 'outbound_conn', '192.0.2.182', 'Exploit attempt against an exposed service on db-02 immediately after the scan.'),
+    ('LOG-G029', now() - interval '4.3 hours', 'file_download', '198.51.100.104', 'Downloaded a routine vendor update package, signature verified.'),
+    ('LOG-G030', now() - interval '10.4 hours', 'file_download', '192.0.2.79', 'Downloaded a routine vendor update package, signature verified.');
 COMMIT;

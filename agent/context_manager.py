@@ -16,13 +16,20 @@
 #                     No LLM is involved in compressing, so identifiers, scores
 #                     and timestamps cannot be paraphrased away.
 #
+# History format (history_format):
+#   native  past tool calls replay as real tool_calls + ToolMessage pairs, and finished cases in the window are
+#           closed with their verdict. This is the default. Rendering past calls as plain text made models
+#           imitate the text (typing fake tool calls with invented results) instead of calling tools; that
+#           corrupted `full` mode in both the v1 and v2 experiments.
+#   text    the original "[Tool Call] ... Result: ..." text rendering, kept only so early v1 results reproduce.
+#
 # agent.py calls get_history() before each investigation and update() after.
 # The agent never knows which strategy is active.
 
 import json
 from typing import Callable, Literal, Optional, Tuple
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from schemas import extract_verdict
 
 Mode = Literal["full", "windowed_summary", "pinned_evidence"]
@@ -77,7 +84,28 @@ Existing summary to update (if any):
 
 Write a concise but evidence-rich summary (max 300 words):"""
 
-SUMMARY_PROMPTS = {"v1": _SUMMARY_PROMPT_V1, "v2": _SUMMARY_PROMPT_V2}
+# v3 maintains a log with exactly one line per COMPLETED investigation and only folds in the investigations
+# that newly left the window (summarizer cost is linear in chain length, not quadratic). Each block carries
+# the investigation's own verdict. The log is framed as closed, separate cases when shown to the agent.
+_SUMMARY_PROMPT_V3 = """You maintain a compact log of a security analyst agent's COMPLETED investigations, so it can remember them cheaply.
+
+Write exactly one line per investigation, in this form:
+- #N [target IP/domain/CVE] -> VERDICT. Evidence: <specific facts: scores, flagging sources, country/ASN, event types and counts, related domains/CVEs>.
+
+Rules:
+- Keep exact identifiers (IPs, domains, CVE IDs) and numbers.
+- Never merge different investigations into one line, and never carry evidence from one target onto another.
+- If the existing log already has a line for an investigation number below, rewrite that line to include the new facts instead of adding a second one.
+- Output only the full updated log.
+
+Existing log:
+{existing}
+
+Newly completed investigations to add:
+{steps_text}"""
+
+SUMMARY_PROMPTS = {"v1": _SUMMARY_PROMPT_V1, "v2": _SUMMARY_PROMPT_V2, "v3": _SUMMARY_PROMPT_V3}
+INCREMENTAL_PROMPTS = {"v3"}  # prompts that fold in only newly evicted investigations
 
 _TOOL_ENTITY_ARG = {
     "lookup_ip_reputation": "ip",
@@ -184,7 +212,11 @@ class ContextManager:
         summarizer:     callable ``prompt -> (text, total_tokens)`` used by
                         windowed_summary. Injectable so tests need no LLM. If
                         omitted it is built lazily from llm.make_summarizer().
-        summary_prompt: "v1" (legacy wording) or "v2" (domain-correct)
+        summary_prompt: "v1" (legacy wording), "v2" (domain-correct) or "v3" (per-investigation log, incremental,
+                        closed-case framing; the default and the best-measured)
+        history_format: "native" (default) replays tool calls as real tool_calls + ToolMessage pairs and closes
+                        finished cases with their verdict; "text" is the original text rendering, kept so old
+                        v1 results reproduce
         pinned_budget_chars: cap on the rendered pinned-evidence block
         include_reports: for the two compressed modes, also replay the last K
                         final reports (task + report, verbatim) that precede the
@@ -199,9 +231,10 @@ class ContextManager:
         mode: Mode = "full",
         window_size: int = 5,
         summarizer: Optional[Callable[[str], Tuple[str, int]]] = None,
-        summary_prompt: str = "v2",
+        summary_prompt: str = "v3",
         pinned_budget_chars: int = 6000,
         include_reports: int = 0,
+        history_format: str = "native",
     ):
         if mode not in MODES:
             raise ValueError(f"Unknown mode {mode!r}; choose from {MODES}")
@@ -210,6 +243,9 @@ class ContextManager:
             raise ValueError("window_size must be >= 1")
         if summary_prompt not in SUMMARY_PROMPTS:
             raise ValueError(f"Unknown summary_prompt {summary_prompt!r}")
+        if history_format not in ("native", "text"):
+            raise ValueError(f"Unknown history_format {history_format!r}; choose native or text")
+        self.history_format = history_format
         self.mode = mode
         self.window_size = window_size
         self.summary_prompt = summary_prompt
@@ -226,6 +262,7 @@ class ContextManager:
         self.all_outputs: list = []
 
         self.rolling_summary: str = ""
+        self.summarized_upto: int = 0  # steps before this index are already folded into the incremental summary
         self.summary_log: list = []  # [{"after_investigation": i, "summary": str}] for post-hoc analysis
         self.summarizer_tokens_used: int = 0
         self.evidence = EvidenceStore()
@@ -262,8 +299,8 @@ class ContextManager:
         messages = []
         for i, task in enumerate(self.all_tasks):
             messages.append(HumanMessage(content=task))
-            for action, observation in self._get_steps_for_investigation(i):
-                messages.append(AIMessage(content=self._format_step_as_message(action, observation)))
+            for n, (action, observation) in enumerate(self._get_steps_for_investigation(i)):
+                messages.extend(self._step_messages(action, observation, f"t{i}s{n}"))
             if i < len(self.all_outputs):
                 messages.append(AIMessage(content=self.all_outputs[i]))
         return messages
@@ -271,18 +308,25 @@ class ContextManager:
     # ── shared: the verbatim window with task-boundary markers ──
 
     def _recent_window_messages(self) -> list:
-        # A HumanMessage(task) is inserted whenever the task changes inside the
-        # window. Without it the model conflated an older investigation with the
-        # current one when the window straddled a task boundary.
+        # A HumanMessage(task) is inserted whenever the task changes inside the window. Without it the model
+        # conflated an older investigation with the current one when the window straddled a task boundary.
+        # In native format each finished case in the window is also closed with its verdict, so completed cases
+        # read as completed (`full` gets this from the stored final reports).
         messages = []
         recent_steps = self.all_steps[-self.window_size:]
         recent_task_indices = self.step_task_index[-self.window_size:]
+        first_step = len(self.all_steps) - len(recent_steps)
+        native = self.history_format == "native"
         last_task_index = None
-        for (action, observation), task_index in zip(recent_steps, recent_task_indices):
+        for n, ((action, observation), task_index) in enumerate(zip(recent_steps, recent_task_indices)):
             if task_index != last_task_index:
+                if native and last_task_index is not None:
+                    messages.append(AIMessage(content=self._closing_line(last_task_index)))
                 messages.append(HumanMessage(content=self.all_tasks[task_index]))
                 last_task_index = task_index
-            messages.append(AIMessage(content=self._format_step_as_message(action, observation)))
+            messages.extend(self._step_messages(action, observation, f"w{first_step + n}"))
+        if native and last_task_index is not None and last_task_index < len(self.all_outputs):
+            messages.append(AIMessage(content=self._closing_line(last_task_index)))
         return messages
 
     def _prior_report_messages(self) -> list:
@@ -302,7 +346,22 @@ class ContextManager:
 
     def _build_windowed_history(self) -> list:
         messages = []
-        if self.rolling_summary:
+        if self.rolling_summary and self.history_format == "native":
+            # Framed as CLOSED, SEPARATE cases. The earlier framing presented other targets' evidence as if it
+            # bore on the current one, and the agent began calling ambiguous or benign targets MALICIOUS once
+            # the summary had filled with evidence from earlier malicious cases.
+            messages.append(
+                SystemMessage(
+                    content=(
+                        "## Earlier investigations (closed, summarized)\n\n"
+                        "These are PRIOR, SEPARATE investigations that are already concluded. Evidence about "
+                        "other targets is not evidence about the current target; only use a line below if the "
+                        "same IP, domain, or CVE shows up in the current investigation's own tool results.\n\n"
+                        + self.rolling_summary
+                    )
+                )
+            )
+        elif self.rolling_summary:
             messages.append(
                 SystemMessage(
                     content=(
@@ -322,22 +381,42 @@ class ContextManager:
         return self._summarizer
 
     def _refresh_rolling_summary(self):
-        """Compress everything older than the window using the cheap model.
+        """Compress what has left the verbatim window using the cheap model.
 
-        NOTE: re-summarizes ALL evicted raw steps plus the previous summary on
-        every call, so summarizer cost grows with session length. An
-        incremental version would fold in only the newly evicted steps.
+        Prompts v1/v2 re-summarize ALL evicted steps plus the previous summary on every call, so summarizer
+        cost grows with the square of chain length. Prompt v3 folds in only the investigations that newly
+        left the window and tracks ``summarized_upto``, so cost is linear.
         """
-        steps_to_summarize = self.all_steps[: -self.window_size] if len(self.all_steps) > self.window_size else []
-        if not steps_to_summarize:
-            self.rolling_summary = ""
-            return
-        prompt = SUMMARY_PROMPTS[self.summary_prompt].format(
-            steps_text=self._steps_to_text(steps_to_summarize),
-            existing=self.rolling_summary or "None — this is the first summary.",
-        )
-        text, tokens = self._get_summarizer()(prompt)
-        self.rolling_summary = text
+        if self.summary_prompt in INCREMENTAL_PROMPTS:
+            evict_end = len(self.all_steps) - self.window_size
+            if evict_end <= self.summarized_upto:
+                return
+            new_steps = self.all_steps[self.summarized_upto:evict_end]
+            new_task_indices = self.step_task_index[self.summarized_upto:evict_end]
+            blocks = []
+            for task_index in dict.fromkeys(new_task_indices):
+                task_steps = [s for s, t in zip(new_steps, new_task_indices) if t == task_index]
+                blocks.append(
+                    f"Investigation #{task_index + 1}\nQuestion: {self.all_tasks[task_index]}\n"
+                    f"{self._steps_to_text(task_steps)}Final verdict: {self._verdict_of(task_index)}"
+                )
+            prompt = SUMMARY_PROMPTS[self.summary_prompt].format(
+                existing=self.rolling_summary or "(empty)", steps_text="\n".join(blocks)
+            )
+            text, tokens = self._get_summarizer()(prompt)
+            self.rolling_summary = text
+            self.summarized_upto = evict_end
+        else:
+            steps_to_summarize = self.all_steps[: -self.window_size] if len(self.all_steps) > self.window_size else []
+            if not steps_to_summarize:
+                self.rolling_summary = ""
+                return
+            prompt = SUMMARY_PROMPTS[self.summary_prompt].format(
+                steps_text=self._steps_to_text(steps_to_summarize),
+                existing=self.rolling_summary or "None — this is the first summary.",
+            )
+            text, tokens = self._get_summarizer()(prompt)
+            self.rolling_summary = text
         self.summarizer_tokens_used += tokens
         self.summary_log.append({"after_investigation": len(self.all_tasks) - 1, "summary": text})
 
@@ -366,6 +445,27 @@ class ContextManager:
 
     # ── HELPERS ─────────────────────────────────────────────────
 
+    def _step_messages(self, action, observation, fallback_id: str) -> list:
+        """One past (action, observation) as messages. Native: a real tool call and its ToolMessage."""
+        if self.history_format == "text":
+            return [AIMessage(content=self._format_step_as_message(action, observation))]
+        call_id = getattr(action, "tool_call_id", None) or f"hist_{fallback_id}"
+        tool_input = getattr(action, "tool_input", {})
+        return [
+            AIMessage(content="", tool_calls=[{
+                "name": getattr(action, "tool", str(action)),
+                "args": tool_input if isinstance(tool_input, dict) else {"input": tool_input},
+                "id": call_id,
+            }]),
+            ToolMessage(content=str(observation), tool_call_id=call_id),
+        ]
+
+    def _verdict_of(self, task_index: int) -> str:
+        return extract_verdict(self.all_outputs[task_index]) if task_index < len(self.all_outputs) else "UNKNOWN"
+
+    def _closing_line(self, task_index: int) -> str:
+        return f"[Investigation closed] VERDICT: {self._verdict_of(task_index)}"
+
     def _format_step_as_message(self, action, observation) -> str:
         tool_name = getattr(action, "tool", str(action))
         tool_input = getattr(action, "tool_input", {})
@@ -388,7 +488,7 @@ class ContextManager:
     def get_token_estimate(self) -> int:
         """Rough size of the injected history (1 token ~ 4 chars). Unlike the
         agent's own estimate, this DOES measure the thing the modes differ in."""
-        return sum(len(m.content) for m in self.get_history()) // 4
+        return sum(len(str(m.content)) + len(str(getattr(m, "tool_calls", ""))) for m in self.get_history()) // 4
 
     def get_stats(self) -> dict:
         return {
@@ -411,6 +511,7 @@ class ContextManager:
         self.all_steps, self.step_task_index = [], []
         self.all_tasks, self.all_outputs = [], []
         self.rolling_summary = ""
+        self.summarized_upto = 0
         self.summary_log = []
         self.summarizer_tokens_used = 0
         self.evidence = EvidenceStore()

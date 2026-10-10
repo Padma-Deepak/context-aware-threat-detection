@@ -12,10 +12,12 @@ label for evaluation and recalibration.
 
 It runs **free on a laptop** with a local model (Ollama or LM Studio). OpenAI is supported behind a spend cap.
 
-The project grew out of an earlier experiment on compressing an agent's history (see "Origin" below). That
-experiment could not show that summarising history is safe, and security work needs every identifier intact, so
-this version **retrieves instead of compressing**: it keeps every tool result verbatim, indexes the entities in
-it, and lets the agent look things up.
+The project grew out of an earlier experiment on compressing an agent's history (see "Origin" below). After its
+bugs were fixed, a summary-based window matched full history's accuracy with 39% fewer tokens on a small
+synthetic set, so compression is not ruled out. This version nonetheless **retrieves instead of compressing**,
+because in security a lossy summary can drop an exact identifier: it keeps every tool result verbatim, indexes
+the entities in it, and lets the agent look things up. Its result has the same shape: graph memory ties full
+replay on accuracy at about half the input tokens.
 
 ## Where things stand
 
@@ -174,7 +176,23 @@ scenarios through one shared context manager. It lives in `agent/`, `mcp_server.
 `scenarios*.json`, and is documented in [`V1_BENCHMARK.md`](V1_BENCHMARK.md). Motivated by Lodha et al.,
 *Less Context, Better Agents* (arXiv:2606.10209).
 
-**What v1 found, stated correctly** (an earlier version of this overview overstated it):
+**What v1 found in the end** (synthetic data, `gpt-4o` / `gpt-4o-mini`, from [`../RESULTS.md`](../RESULTS.md)):
+- **Final held-out set (second batch, 10 scenarios as one chain, 3 repeats):** windowed summary 30/30, full
+  history 28/30, a **tie** (effectively about 10 independent items at temperature 0). Windowed used **39% fewer
+  tokens** per investigation (10,043 vs 16,574) and 60% fewer on the last one, with a lower median latency.
+- **How it got there:** the first held-out run, with the original code, had windowed worse (62.5% vs 83.3%).
+  Debugging that exposed real defects: the token metric ignored re-sent history; the summarizer prompt came
+  from an unrelated domain and framed closed cases as evidence about the current one; summaries were re-built
+  from scratch each time. Those were fixed, and that first set was treated as spent. A re-run on the dev set
+  then showed full mode failing for a **baseline bug**: past tool calls were replayed as plain text and the
+  model imitated it, typing fake tool calls with invented results. Replaying native tool-call messages fixed
+  the baseline. The final held-out set was committed before the fixes were run on it.
+- **v2 independently hit the same text-replay bug** in its own `full` mode and fixed it the same way.
+- **Limits:** small N, hand-written synthetic scenarios, one model pair and window size, and the windowed
+  history includes closed-case framing that `full` lacks.
+
+**What the first v1 runs showed, stated correctly** (an earlier version of this overview overstated it; these
+numbers predate the fixes above):
 - Held-out: full history 20/24 = 83.3%, windowed 15/24 = 62.5%. The difference is **not statistically
   significant** (95% CI −58 to +8 points, exact McNemar p = 0.125). On the dev set it pointed the other way
   (85.2% vs 90.0%, p = 0.69). It is **a direction on eight scenarios, not a result.**
@@ -188,8 +206,10 @@ scenarios through one shared context manager. It lives in `agent/`, `mcp_server.
 - It also produced the benchmark-validity lessons carried into v2: chain questions so history actually
   accumulates, keep a held-out set, verify labels against live data, and audit what a metric measures.
 
-**Why that led here:** v1 couldn't establish that compression is safe, and in security an exact IP, SID or
-timestamp matters, so v2 keeps everything and retrieves.
+**Why that led here:** v1 showed compression can match full history on short synthetic tasks, but a lossy
+summary can drop an exact IP, SID or timestamp, which matters in security, and I wanted memory with a recall
+guarantee that can be tested on a real benchmark. So v2 keeps everything and retrieves. That is a design
+choice, not a claim that compression failed.
 
 ## Credits
 ExCyTIn-Bench (Wu et al., ICML 2026, [microsoft/SecRL](https://github.com/microsoft/SecRL), MIT). Sigma rules:

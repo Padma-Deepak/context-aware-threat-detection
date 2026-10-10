@@ -1,7 +1,7 @@
 import pytest
 from conftest import action, ip_rep, report
 from context_manager import EvidenceStore, ContextManager
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
 
 def feed(cm, n_tasks=3, steps_per_task=2):
@@ -26,6 +26,8 @@ def test_rejects_bad_config():
         ContextManager(mode="windowed_summary", window_size=0)  # [-0:] would keep everything
     with pytest.raises(ValueError):
         ContextManager(summary_prompt="v9")
+    with pytest.raises(ValueError):
+        ContextManager(history_format="markdown")
 
 
 def test_full_history_keeps_everything_in_order():
@@ -33,10 +35,33 @@ def test_full_history_keeps_everything_in_order():
     feed(cm, n_tasks=2, steps_per_task=2)
     msgs = cm.get_history()
     kinds = [type(m).__name__ for m in msgs]
-    # per task: Human(task), 2x AI(tool), AI(report)
+    # per task: Human(task), 2x [AI(tool call), Tool(result)], AI(report)
+    assert kinds == ["HumanMessage", "AIMessage", "ToolMessage", "AIMessage", "ToolMessage", "AIMessage"] * 2
+    assert msgs[0].content == "task 0" and msgs[6].content == "task 1"
+    assert "VERDICT: MALICIOUS" in msgs[5].content  # prior reports are replayed in full mode
+
+
+def test_native_history_replays_real_tool_call_pairs_with_matching_ids():
+    """Text-rendered history made the model imitate the text instead of calling tools (seen in v1 and v2)."""
+    cm = ContextManager(mode="full")
+    feed(cm, n_tasks=2, steps_per_task=2)
+    msgs = cm.get_history()
+    calls = [m for m in msgs if isinstance(m, AIMessage) and m.tool_calls]
+    results = [m for m in msgs if isinstance(m, ToolMessage)]
+    assert len(calls) == len(results) == 4
+    assert [c.tool_calls[0]["id"] for c in calls] == [r.tool_call_id for r in results]
+    assert len({r.tool_call_id for r in results}) == 4  # ids are unique across the whole history
+    assert calls[0].tool_calls[0]["name"] == "lookup_ip_reputation"
+    assert calls[0].tool_calls[0]["args"] == {"ip": "203.0.113.00"}
+    assert not any("[Tool Call]" in str(m.content) for m in msgs)
+
+
+def test_text_format_is_kept_so_early_v1_runs_reproduce():
+    cm = ContextManager(mode="full", history_format="text")
+    feed(cm, n_tasks=2, steps_per_task=2)
+    kinds = [type(m).__name__ for m in cm.get_history()]
     assert kinds == ["HumanMessage", "AIMessage", "AIMessage", "AIMessage"] * 2
-    assert msgs[0].content == "task 0" and msgs[4].content == "task 1"
-    assert "VERDICT: MALICIOUS" in msgs[3].content  # prior reports are replayed in full mode
+    assert "[Tool Call] lookup_ip_reputation" in cm.get_history()[1].content
 
 
 def test_windowed_summarizes_only_evicted_steps(fake_summarizer):
@@ -44,9 +69,36 @@ def test_windowed_summarizes_only_evicted_steps(fake_summarizer):
     feed(cm, n_tasks=3, steps_per_task=2)  # 6 steps, window 2 -> 4 evicted
     msgs = cm.get_history()
     assert isinstance(msgs[0], SystemMessage) and "SUMMARY#2" in msgs[0].content  # 1st update fits the window, so 3 updates -> 2 summaries
-    verbatim = [m for m in msgs if isinstance(m, AIMessage)]
-    assert len(verbatim) == 2  # only the window, no prior reports
-    assert not any("VERDICT" in m.content for m in msgs)
+    verbatim = [m for m in msgs if isinstance(m, AIMessage) and m.tool_calls]
+    assert len(verbatim) == 2  # only the window's tool calls
+    assert not any("Investigation Report" in str(m.content) for m in msgs)  # no prior final reports replayed
+
+
+def test_windowed_frames_the_summary_as_closed_cases_and_closes_each_case_in_the_window(fake_summarizer):
+    cm = ContextManager(mode="windowed_summary", window_size=3, summarizer=fake_summarizer)
+    feed(cm, n_tasks=3, steps_per_task=2)
+    msgs = cm.get_history()
+    assert "PRIOR, SEPARATE" in msgs[0].content and "closed" in msgs[0].content.lower()
+    closing = [m.content for m in msgs if isinstance(m, AIMessage) and "[Investigation closed]" in m.content]
+    assert closing == ["[Investigation closed] VERDICT: MALICIOUS"] * 2  # each case the window touches is closed
+    legacy = ContextManager(mode="windowed_summary", window_size=3, summarizer=fake_summarizer, history_format="text")
+    feed(legacy, n_tasks=3, steps_per_task=2)
+    assert "Summary of Prior Activity" in legacy.get_history()[0].content
+    assert not any("[Investigation closed]" in str(m.content) for m in legacy.get_history())
+
+
+def test_v3_summary_is_incremental_per_investigation_and_linear_in_cost(fake_summarizer):
+    cm = ContextManager(mode="windowed_summary", window_size=1, summarizer=fake_summarizer)  # default prompt v3
+    feed(cm, n_tasks=3, steps_per_task=2)
+    assert len(fake_summarizer.calls) == 3 and cm.summarized_upto == 5
+    first, second, third = fake_summarizer.calls
+    assert "203.0.113.00" in first and "203.0.113.11" not in first
+    assert "203.0.113.00" not in second and "203.0.113.01" in second and "203.0.113.10" in second  # only newly evicted
+    assert "203.0.113.00" not in third and "Final verdict: MALICIOUS" in third
+    assert "SUMMARY#2" in third  # the previous log is carried forward, not re-derived from raw steps
+    assert "one line per investigation" in first
+    cm.reset()
+    assert cm.summarized_upto == 0
 
 
 def test_windowed_inserts_task_boundary_when_window_straddles_tasks(fake_summarizer):
@@ -170,7 +222,7 @@ def test_include_reports_replays_prior_reports_in_compressed_modes_only_outside_
         cm = ContextManager(mode=mode, window_size=2, summarizer=fake_summarizer, include_reports=1)
         feed(cm, n_tasks=4, steps_per_task=2)  # window covers task 3 only
         msgs = cm.get_history()
-        reports = [m.content for m in msgs if isinstance(m, AIMessage) and "VERDICT" in m.content]
+        reports = [m.content for m in msgs if isinstance(m, AIMessage) and "Investigation Report" in m.content]
         assert len(reports) == 1 and "203.0.113.20" in reports[0]  # task 2's report, the latest outside the window
         humans = [m.content for m in msgs if isinstance(m, HumanMessage)]
         assert humans == ["task 2", "task 3"]  # replayed task, then the window's own task marker
@@ -179,7 +231,7 @@ def test_include_reports_replays_prior_reports_in_compressed_modes_only_outside_
 def test_include_reports_default_off_and_validated(fake_summarizer):
     cm = ContextManager(mode="windowed_summary", window_size=2, summarizer=fake_summarizer)
     feed(cm, n_tasks=3)
-    assert not any("VERDICT" in m.content for m in cm.get_history())
+    assert not any("Investigation Report" in str(m.content) for m in cm.get_history())
     with pytest.raises(ValueError):
         ContextManager(include_reports=-1)
 

@@ -18,7 +18,7 @@
     "archetype": "benign_ip",
     "difficulty": "easy",
     "ground_truth": "BENIGN",
-    "task": "Can you check whether 192.0.2.41 is a problem? It appeared in a routine report.",
+    "task": "Can you check whether 203.0.113.2 is a problem? It appeared in a routine report.",
     "expected_tools": [
       "lookup_ip_reputation",
       "query_logs"
@@ -144,7 +144,7 @@
     "archetype": "benign_ip",
     "difficulty": "easy",
     "ground_truth": "BENIGN",
-    "task": "203.0.113.38 shows up in our network logs. Is it something we should worry about?",
+    "task": "198.51.100.104 shows up in our network logs. Is it something we should worry about?",
     "expected_tools": [
       "lookup_ip_reputation",
       "query_logs"
@@ -182,7 +182,7 @@
     "archetype": "unseeded_ip",
     "difficulty": "hard",
     "ground_truth": "ESCALATE",
-    "task": "We saw a single connection attempt from 192.0.2.182 and nothing else. Threat, safe, or something else?",
+    "task": "We saw a single connection attempt from 203.0.113.38 and nothing else. Threat, safe, or something else?",
     "expected_tools": [
       "lookup_ip_reputation"
     ],
@@ -376,7 +376,7 @@
     "archetype": "unseeded_ip",
     "difficulty": "hard",
     "ground_truth": "ESCALATE",
-    "task": "We saw a single connection attempt from 203.0.113.2 and nothing else. Threat, safe, or something else?",
+    "task": "We saw a single connection attempt from 192.0.2.87 and nothing else. Threat, safe, or something else?",
     "expected_tools": [
       "lookup_ip_reputation"
     ],
@@ -388,7 +388,7 @@
     "archetype": "benign_ip",
     "difficulty": "easy",
     "ground_truth": "BENIGN",
-    "task": "Can you check whether 198.51.100.104 is a problem? It appeared in a routine report.",
+    "task": "Can you check whether 192.0.2.79 is a problem? It appeared in a routine report.",
     "expected_tools": [
       "lookup_ip_reputation",
       "query_logs"
@@ -503,7 +503,7 @@
     "archetype": "malicious_ip",
     "difficulty": "easy",
     "ground_truth": "MALICIOUS",
-    "task": "Please assess 192.0.2.87: it keeps appearing in alerts on db-02.",
+    "task": "Please assess 192.0.2.182: it keeps appearing in alerts on db-02.",
     "expected_tools": [
       "lookup_ip_reputation",
       "query_logs",

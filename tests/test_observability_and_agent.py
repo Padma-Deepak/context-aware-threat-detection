@@ -88,7 +88,8 @@ def test_investigate_passes_managed_history_to_the_executor(monkeypatch):
     cm.update("earlier", [(action("lookup_cve", cve_id="CVE-1"), "{}")], report("ESCALATE"))
     ex = FakeExecutor(report("ESCALATE"), [])
     asyncio.run(make_agent(monkeypatch, ex, cm).investigate("now"))
-    assert ex.inputs["input"] == "now" and len(ex.inputs["chat_history"]) == 3
+    # task, tool call, tool result, final report
+    assert ex.inputs["input"] == "now" and len(ex.inputs["chat_history"]) == 4
 
 
 def test_unparseable_report_is_scored_unknown(monkeypatch):

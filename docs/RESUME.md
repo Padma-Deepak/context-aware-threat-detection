@@ -20,7 +20,9 @@ Fill the brackets from `results/excytin/report.md` and `python -m triage.cli met
 
 ## Questions to be ready for
 
-- Why not summarise history? (v1 tried; inconclusive; security needs every identifier; retrieval is lossless.)
+- Why not summarise history? (v1 tried, and after its bugs were fixed the summary window matched full history with
+  39% fewer tokens on a small synthetic set, so it works; but a lossy summary can drop an exact IP, SID or
+  timestamp, which matters in security, and retrieval gives a recall guarantee I can test.)
 - What does the conformal guarantee actually promise, and what does it assume? (Exchangeability between
   calibration and new alerts; it bounds error among auto-decided alerts, not overall.)
 - Where do labels come from, and what can't you measure? (Incident-linked alerts are malicious; benign only

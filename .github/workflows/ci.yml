@@ -59,7 +59,7 @@ jobs:
       - name: Load schema and every seed file
         run: |
           psql -h localhost -U secinvest -d secinvest -v ON_ERROR_STOP=1 -f db/schema.sql
-          for f in db/seed.sql db/seed_holdout.sql db/seed_longhorizon.sql db/seed_injection.sql db/seed_generated.sql; do
+          for f in db/seed.sql db/seed_holdout.sql db/seed_holdout2.sql db/seed_longhorizon.sql db/seed_injection.sql db/seed_generated.sql; do
             psql -h localhost -U secinvest -d secinvest -v ON_ERROR_STOP=1 -f "$f"
           done
       - name: Data-layer tests and label verification against live Postgres

@@ -36,7 +36,10 @@ def _build(model, temperature, max_tokens=None, **kwargs):
         from langchain_openai import ChatOpenAI
 
         extra = {"max_tokens": max_tokens} if max_tokens else {}
-        return ChatOpenAI(model=model, temperature=temperature, api_key=os.getenv("OPENAI_API_KEY"), **extra, **kwargs)
+        # stream_usage=True: AgentExecutor streams the model, and without it OpenAI omits usage from streamed
+        # responses, so real token counts would silently be 0 (found in the Sep 27 token-accounting fix).
+        return ChatOpenAI(model=model, temperature=temperature, api_key=os.getenv("OPENAI_API_KEY"),
+                          stream_usage=True, **extra, **kwargs)
     from langchain_anthropic import ChatAnthropic
 
     return ChatAnthropic(
@@ -54,7 +57,7 @@ def make_agent_llm():
 
 def make_summarizer():
     """Return a callable ``prompt -> (text, total_tokens)`` for rolling summaries."""
-    llm = _build(summarizer_model_name(), 0, max_tokens=400)
+    llm = _build(summarizer_model_name(), 0, max_tokens=1200)  # v3 keeps one line per investigation, so it grows with the chain
 
     def summarize(prompt):
         msg = llm.invoke(prompt)

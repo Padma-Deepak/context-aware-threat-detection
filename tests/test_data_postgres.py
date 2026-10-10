@@ -58,6 +58,7 @@ def test_mcp_server_exposes_exactly_the_five_documented_tools():
 @pytest.mark.parametrize("script,args", [
     ("verify_scenarios.py", []),
     ("verify_scenarios_holdout.py", []),
+    ("verify_scenarios_holdout2.py", []),
     ("verify_extended.py", ["all"]),
 ])
 def test_scenario_labels_are_consistent_with_live_data(script, args):

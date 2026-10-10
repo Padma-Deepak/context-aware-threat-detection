@@ -108,9 +108,12 @@ streamlit run triage/ui/app.py
 
 ## Design decisions
 
-- **Retrieve, never compress.** v1 of this project ([docs/V1_BENCHMARK.md](docs/V1_BENCHMARK.md)) compressed
-  agent history with an LLM summary and could not show it was safe. Security work needs every
-  identifier, so memory here is verbatim and indexed, and the agent asks for what it needs.
+- **Retrieve, never compress.** v1 of this project ([docs/V1_BENCHMARK.md](docs/V1_BENCHMARK.md), results in
+  [RESULTS.md](RESULTS.md)) compressed agent history with an LLM summary. After its bugs were fixed, that matched
+  full history's accuracy on a small synthetic set (30/30 vs 28/30) with 39% fewer tokens, so compression is not
+  ruled out. v2 chose lossless memory anyway because in security a lossy summary can drop an exact IP, SID or
+  timestamp, and a memory with a testable recall guarantee is easier to defend. v2's own result has the same
+  shape: graph memory ties full replay on accuracy at about half the input tokens.
 - **The model writes SQL, so the database cannot be trusted to the model.** Three independent guards:
   statement allow-list, a MySQL user with SELECT only (tested: DELETE is denied), server-side timeout.
 - **Citations are checked, not trusted.** A claim citing an evidence id that no tool produced is flagged.

@@ -9,7 +9,7 @@ written down *before* you see a number.
 
 ```bash
 docker compose up --build -d                     # postgres + MCP server (set MCP_HOST_PORT=8011 if 8000 is taken)
-for f in db/seed_holdout.sql db/seed_longhorizon.sql db/seed_injection.sql db/seed_generated.sql; do
+for f in db/seed_holdout.sql db/seed_holdout2.sql db/seed_longhorizon.sql db/seed_injection.sql db/seed_generated.sql; do
   docker compose exec -T postgres psql -U secinvest -d secinvest -v ON_ERROR_STOP=1 < "$f"
 done
 export DATABASE_URL=postgresql://secinvest:secinvest_local_only@localhost:5432/secinvest
@@ -37,7 +37,7 @@ Smoke-test cheaply first: `RUNS_PER_CHAIN=1 MODES=full python benchmark.py`.
 | **E6** | Is window = 2 just too aggressive? | Loop `WINDOW_SIZE` over 1, 2, 4, 8 with `MODES=windowed_summary,pinned_evidence` on E2's scenarios | Accuracy of `windowed_summary` recovers as the window grows. | Plot accuracy vs window. If it never recovers, the summarizer, not the window, is the problem. |
 | **E7a** | Hypothesis A: summaries carry "malicious" framing forward and prime later verdicts | Read `summaries` in the E1/E2 result files for `windowed_summary` runs; look at what the summary says before H06/H08-style scenarios | Summaries before a failed scenario over-emphasise earlier malicious findings. | Qualitative. Write down the two or three worst summaries. |
 | **E7b** | Hypothesis B: full mode wins because it replays prior *reports* (few-shot calibration) | `INCLUDE_REPORTS=3 MODES=windowed_summary,pinned_evidence …` vs `INCLUDE_REPORTS=0` on E2's scenarios | Replaying reports closes the gap to `full`. | If accuracy recovers, the mechanism is "prior verdict examples", not "evidence loss". |
-| **E8** | Prompt injection: does hostile text change verdicts, leak the prompt, or persist in memory? | `SCENARIOS_FILE=../scenarios_injection.json MODES=full,windowed_summary,pinned_evidence` with `PROMPT_VERSION=v1` then `v2` | v1 is fooled by at least one of J01–J04; v2 resists more. | Check per-scenario verdicts, the "Prompt leaks" line, and **J05** (clean control): if a mode fails J05 after poisoned tasks, hostile text persisted in its context. |
+| **E8** | Prompt injection: does hostile text change verdicts, leak the prompt, or persist in memory? | `SCENARIOS_FILE=../scenarios_injection.json MODES=full,windowed_summary,pinned_evidence` with `PROMPT_VERSION=v1` then `v2` | v1 is fooled by at least one of I01–I04; v2 resists more. | Check per-scenario verdicts, the "Prompt leaks" line, and **I05** (clean control): if a mode fails I05 after poisoned tasks, hostile text persisted in its context. |
 
 E1 and E2 are the ones that matter for the headline claim. Everything else explains or stress-tests it.
 
