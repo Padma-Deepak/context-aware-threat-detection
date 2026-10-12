@@ -33,11 +33,15 @@ Where something depends on information only you have (your contribution, your mo
 - **It works.** An agent investigates real attack logs, cites its evidence, and runs free on a laptop.
 - **Memory helps.** On 186 questions per mode: no memory 38%, full replay 47%, graph memory 49%. Both memory modes
   are statistically better than none; graph more clearly (p = 0.013 vs 0.048).
-- **Graph memory ties full replay on accuracy** (+2 points, p = 0.71) **but uses half the input tokens**, at about
-  twice the time per question. So it is not "better", it is "as good and cheaper in context".
+- **Graph memory tied full replay in the main run** (+2 points, p = 0.71) at half the input tokens and twice the time.
+  **Then I tested a fix and it backfired:** giving every mode the database schema left accuracy unchanged for two
+  modes and made graph significantly worse, so with the schema **full replay beats graph by 11 points** (p = 0.011).
+  Net: graph memory ties full replay at best; there is no evidence it is more accurate.
 - **Auto-closing alerts still does not work.** The model's confidence is too weak a signal: its most confident
   answers are right only 57-66% of the time, so the safety mechanism (correctly) escalates everything.
-- **Status: built, tested, main memory benchmark run.** Injection, triage-queue and commercial-model runs remain.
+- **I predicted the schema test would help, wrote the prediction down first, and was wrong on all four counts.** That is
+  a result, not a failure: it rules out schema guessing as the main bottleneck.
+- **Status: built, tested, two large benchmark runs done.** Injection, triage-queue and commercial-model runs remain.
 
 ## A0.2 The 30-second pitch
 "I built an LLM triage agent for security alerts. It investigates real Microsoft Sentinel and Defender logs
@@ -49,16 +53,17 @@ for free. My first version of this project tested compressing the agent's histor
 bugs were fixed that matched full history on a small synthetic set with 39% fewer tokens, but I wanted memory
 that can't drop an exact identifier, so this one retrieves instead of compressing. On 186 questions per mode,
 memory raised accuracy from 38% to about 47-49%. My graph memory matched simple full-history replay on
-accuracy but used about half the input tokens; I couldn't show it was more accurate. The model's confidence
+accuracy in the main run with about half the input tokens, and lost to it once both were given the database
+schema, so I can't claim it is more accurate. The model's confidence
 turned out too weak to automate any alerts, so everything still escalates to a human."
 
 ## A0.3 What you may claim, and what you may not
 
 | ✅ You can say (it's true and measured or tested) | ❌ Do not say (not shown) |
 |---|---|
-| Built an agent over real Sentinel/Defender logs with cited, schema-validated verdicts | "Graph memory is more accurate than full replay" (+2.2 pts, CI −6.5 to +10.2, p = 0.71: a tie) |
+| Built an agent over real Sentinel/Defender logs with cited, schema-validated verdicts | "Graph memory is more accurate than full replay" (main run +2.2 pts, p = 0.71: a tie; with the schema −11.3 pts, p = 0.011: full wins) |
 | Memory raised accuracy 38% → 49% for graph (+10.8, CI +2.7 to +18.8, p = 0.013, n = 186/mode) | "Graph memory is cheaper overall" (half the *input tokens*, but ~2x the time and 2.5x the tool calls) |
-| Graph memory matched full replay using about half the input tokens (39k vs 78k per question) | "Conformal escalation reduced analyst workload" (it automated 0%) |
+| Graph memory matched full replay in the main run using about half the input tokens (39k vs 78k), an edge that disappears once the schema is in the prompt (97.6k vs 106.5k) | "Conformal escalation reduced analyst workload" (it automated 0%) |
 | Sigma→SQL compiler runs 1,680 of 1,734 SigmaHQ Windows rules (97%) in mapped categories | "Prompt-injection robust" (injection test built, **not run**) |
 | 174 tests, record/replay so CI needs no key, secret-scan test, OpenTelemetry tracing | "Works on real company data" (one tenant, simulated attacks, anonymised) |
 | Found and fixed two harness bugs that were distorting results (A5 Q9) | Any commercial-model result (none run) |
@@ -100,6 +105,15 @@ turned out too weak to automate any alerts, so everything still escalates to a h
 - **By incident (one run per question):** graph 73% on #38 but 16% on #55 and 32% on #166. Large variance.
 - **Confidence:** answers under 90 are right 16% of the time, 90 or more 57%, 95 or more 66%. Real signal, but far
   below the 90-95% a 5-10% error target needs, so the conformal calibration certifies nothing: **0% automated**.
+- **Schema experiment (E9, same 558 questions, every table's exact columns in the prompt):** none 38.2% → 38.2%
+  (+0.0, CI −7.0 to +7.0), full 46.8% → 47.8% (+1.1, CI −5.9 to +8.6), **graph 48.9% → 36.6% (−12.4, CI −19.9 to −5.4,
+  p = 0.002)**. With the schema, full beats graph by **11.3 points** (CI −19.4 to −2.7, p = 0.011) and beats none by
+  9.7. SQL failures: none 26.6% → 21.3%, full 10.1% → 14.2%, graph 31.1% → 22.4%. Input tokens rise to about 98-106k
+  in every mode, so graph's token advantage (39k vs 78k) disappears (97.6k vs 106.5k). Graph no-submit 12.4%.
+- **Why the schema didn't help:** 493 "unknown column" errors remained; **438 (89%) were columns that exist on another
+  table** (e.g. `AlertId` is on `AlertInfo`, not `SecurityAlert`), 55 (11%) were invented. The model's trouble is picking
+  the table. **All four pre-registered predictions were wrong** (SQL errors < 10%; accuracy up in every mode; graph
+  gains at least as much as full; graph vs full stays in noise).
 - **Pilot** (5 per incident, 40 per mode): none 35%, qa_notes 47.5%, graph 50%, full 60%. Too small to separate the
   modes; it overestimated full's advantage.
 - **Not run yet:** prompt injection, triage on the alert queue, repeats for agreement-based confidence, any
@@ -239,16 +253,36 @@ and my graph memory 49%. Both memory modes beat no memory with intervals that ex
 (+10.8 points, CI +2.7 to +18.8, p = 0.013). But graph and full replay are a statistical tie (+2.2, CI −6.5 to
 +10.2). The difference is cost: graph used about half the input tokens, 39k vs 78k, while taking about twice as
 long per question. So I can say graph memory matches full replay with a smaller context, not that it's more
-accurate."
+accurate. I then tested my explanation for graph's weak incidents, wrote the prediction down first, and it was
+wrong: giving every mode the exact database schema did nothing for two modes and cut graph's accuracy by 12 points,
+so with the schema full replay beats graph by 11 points. Graph memory ties full replay at best."
 **Why:** shows you read your own results, resist overclaiming, and can name the trade-off.
 **Follow-ups:** "Why is graph slower?" (It makes 9.6 tool calls vs 3.8: full replay hands the model earlier tool
 results directly so it often answers in a few steps, while graph mode has the model query memory and the database.)
-· "Why is graph weak on incidents 55 and 166?" (Transcripts show 31% of its SQL queries fail, 87% of those on a
-column that doesn't exist, versus 10% for full replay, which replays earlier working queries. Failed queries use up
-the 15-step cap. Graph runs with zero SQL errors scored 77%. It's a correlation, not a tested cause; the test is to
-give every mode the schema up front. See `docs/ERROR_ANALYSIS.md`.) · "Is the late-chain gain real?" (Suggestive only;
+· "Why is graph weak on incidents 55 and 166?" (I thought schema guessing: 31% of its SQL queries failed, mostly
+'unknown column', versus 10% for full replay. I tested it by giving every mode the exact column names, and the
+hypothesis failed: accuracy did not rise and graph got worse. 89% of the remaining errors are real columns used on
+the wrong table, so the model's trouble is choosing the table. Why it is weak on those incidents is still open. See
+`docs/ERROR_ANALYSIS.md`.) · "Is the late-chain gain real?" (Suggestive only;
 question order is a confound.) · "Would graph win on longer chains?" (My 25-question chains didn't show that
 full replay overflowed enough to hurt; I haven't tested chains long enough to force it.)
+
+### Q2b. "Tell me about an experiment where you were wrong."
+**Strong answer:** "The main run showed graph memory scoring badly on a couple of incidents. Reading the transcripts, 31%
+of its SQL queries failed, mostly with 'unknown column', versus 10% for full replay, which sees earlier working
+queries. I hypothesised schema guessing was the bottleneck, wrote down four predictions and decision rules, and
+re-ran all 558 questions with every table's exact column names in the prompt. All four predictions were wrong:
+accuracy didn't change for two modes and graph dropped 12 points (p = 0.002), so full replay now beat graph by 11
+points. Digging in, 89% of the remaining column errors were real columns used on the wrong table, so the model's
+problem was choosing the right table, not remembering names, and dumping seven thousand tokens of columns into the
+prompt just crowded it. I corrected my docs, including a 'runs with zero errors scored 77%' claim that was really
+easy questions causing fewer errors."
+**Why:** shows pre-registration, reporting a refuted hypothesis, and correcting your own earlier claims.
+**Follow-ups:** "Why did graph get worse?" (Not established; HYPOTHESES: the larger prompt crowds the memory block, and
+no-submit runs rose from 8% to 12%; I have not tested either.) · "What would you try next?" (A compact table-to-purpose
+guide or join map instead of a raw column dump, few-shot working queries, or letting graph memory store successful
+queries, which is what full replay does implicitly.) · "Was that a failure?" (No: it ruled out the cheap explanation and
+changed what I'd build next.)
 
 ### Q3. "Why did you move away from compressing history?"
 **Strong answer:** "It wasn't that compression failed. v1 tested a rolling LLM summary: the first held-out run had
@@ -397,8 +431,8 @@ submit, and run a small commercial-model check under a spend cap. Week four: dep
 snapshot."
 
 ### Q19. "What's the weakest part?"
-**Strong answer:** "The headline claim is modest: graph memory ties full replay on accuracy, with half the input
-tokens but twice the time. The confidence signal is too weak, so escalation is currently 100%. Results vary a lot
+**Strong answer:** "The headline claim is modest and fragile: graph memory tied full replay in the main run, then lost
+to it by 11 points when both got the database schema. The confidence signal is too weak, so escalation is currently 100%. Results vary a lot
 by incident, with one run per question. Every model result is from one small local model."
 
 ### Q20. "Did you read ExCyTIn / the conformal paper?"
@@ -443,14 +477,16 @@ errors, records usage and cost, then caches the result.
 # A7. Limitations, ranked, and danger areas
 
 ## What's weak (own these)
-1. **No evidence graph memory beats simple replay.** It ties it on accuracy (p = 0.71); its advantage is half the input tokens.
+1. **No evidence graph memory beats simple replay.** It tied it in the main run (p = 0.71), then lost by 11 points when both got
+   the database schema (p = 0.011). Its one advantage, half the input tokens, disappears with the schema in the prompt.
 2. **Escalation is 100% today.** Self-reported confidence is too weak (57-66% right even when most confident).
 3. **One small local model.** No commercial-model result, no second model family.
 4. **Alert mix isn't realistic.** Almost all alerts are true positives from simulated attacks in one tenant;
    false-positive rate is unmeasurable without reviews.
-5. **Prompt injection and the main benchmark are built but not run.**
-6. **Graph mode is slower, sloppier and uneven** (55 s vs 25 s per question; 83% vs 90% valid citations; 8% never
-   submit; 16% accuracy on incident 55 vs 73% on incident 38).
+5. **Prompt injection, triage on the alert queue and a commercial-model check are built but not run.**
+6. **Graph mode is slower, sloppier and uneven** (55 s vs 25 s per question; 83% vs 90% valid citations; 8-12% never
+   submit; 16% accuracy on incident 55 vs 73% on incident 38). Why is not established: the schema hypothesis was
+   tested and rejected.
 7. **Deterministic grading** can under- or over-credit; the judge path was not used in the runs.
 8. **ExCyTIn's IPs are anonymised**, so IP reputation lookups mostly return "not found" here; CVE, KEV and ATT&CK
    enrichment works.
@@ -459,7 +495,8 @@ errors, records usage and cost, then caches the result.
 10. **Regex entity extraction** misses unshaped free-text entities.
 
 ## Danger areas: where you get exposed
-1. **"Graph memory is more accurate than full replay."** It isn't (p = 0.71). Say "matches it with half the input tokens".
+1. **"Graph memory is more accurate than full replay."** It isn't: a tie in the main run (p = 0.71), a loss with the schema
+   (p = 0.011). Say "matches it in the main run with half the input tokens"; don't claim it's better.
 2. **"The conformal system reduces analyst load."** It automated 0%.
 3. **Quoting accuracy next to published ExCyTIn numbers.** Different metric (answer accuracy vs reward) and a
    much smaller model.
@@ -507,16 +544,18 @@ identical arms; the pilot's step-0 errors and prose fallbacks.
 - **Data?** ExCyTIn-Bench: 8 incidents, 2.3M rows, 589 test questions.
 - **Memory modes?** none, qa_notes, full, graph.
 - **Main result?** 38.2% / 46.8% / 48.9% (none / full / graph), n = 186 each.
-- **Significant?** Both memory modes beat none (graph p = 0.013, full p = 0.048); graph vs full is a tie (p = 0.71).
+- **Significant?** Both memory modes beat none (graph p = 0.013, full p = 0.048); graph vs full is a tie (p = 0.71) in the main run.
+- **Schema experiment?** No help: none +0.0, full +1.1, graph −12.4 (p = 0.002); with the schema full beats graph by 11.3 (p = 0.011). All four predictions were wrong.
 - **Model?** `gpt-oss:20b` locally, $0. **Escalation rate today?** 100%. **Why?** Confidence is uninformative.
 - **Sigma coverage?** 1,680 of 1,734 rules (97%). **Tests?** 174.
-- **What's not done?** Injection run, triage on the alert queue, agreement-based confidence, commercial check, demo deploy.
+- **What's not done?** Injection run, triage on the alert queue, agreement-based confidence, commercial check, demo deploy, a table-guide / few-shot follow-up.
 
 ## 20 most likely questions, ranked
 🔥 **VERY LIKELY**
 1. Walk me through your project. (Q1)
 2. What did you find and how confident are you? (Q2)
 3. Did your graph memory beat full replay? (Q2, Q19)
+   - and: tell me about a hypothesis you got wrong. (Q2b)
 4. Why not compress/summarise history? (Q3)
 5. How does the memory work and what does it guarantee? (Q4)
 6. Explain the conformal escalation and why it automated nothing. (Q5)

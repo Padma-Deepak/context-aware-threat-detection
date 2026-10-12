@@ -73,9 +73,8 @@ What this does and does not show:
   83% valid citations versus 90%; 8% of runs never called submit (full: 0%). It used `recall` on 87% of
   questions, and accuracy was 48% with recall versus 56% without (n = 161 vs 25; not meaningful).
 - **Results vary a lot by incident** (graph: 73% on #38 but 16% on #55 and 32% on #166; one run per question).
-  Transcript analysis ([docs/ERROR_ANALYSIS.md](docs/ERROR_ANALYSIS.md)) points to SQL schema errors: 31% of
-  graph's queries fail (87% of those on a column that doesn't exist) versus 10% for full replay, which runs the
-  agent out of steps. Graph runs with no SQL errors scored 77%. This is a correlation, not yet a tested cause.
+  Transcripts showed 31% of graph's SQL queries failing (mostly "unknown column") versus 10% for full replay, which
+  suggested schema errors were the cause. **The follow-up experiment below tested that and rejected it.**
 - **Conformal escalation still automated 0%.** Confidence carries some signal (answers under 90 are right 16% of
   the time, 90 or more 57%, 95 or more 66%) but nowhere near the 90-95% reliability a 5-10% error target needs,
   so no threshold is certified and everything escalates. Agreement across repeated runs is the next thing to try.
@@ -85,6 +84,27 @@ What this does and does not show:
   was too small to separate the modes.
 - Not yet run: prompt injection, triage on the alert queue, repeats for agreement-based confidence, any
   commercial model.
+
+### Follow-up experiment: give every mode the database schema (result: it did not help)
+
+Hypothesis, written before the run: schema guessing was the bottleneck, so listing every table's exact column names
+in the prompt should lift accuracy, graph most. Same 558 questions and settings ([docs/ERROR_ANALYSIS.md](docs/ERROR_ANALYSIS.md),
+[report](results/excytin/schema_report.md), [raw runs](results/excytin/schema_slim.jsonl)).
+
+| Mode | Accuracy without → with schema | Change with schema (95% CI) | McNemar p | SQL queries failing | Input tokens |
+|---|---|---|---|---|---|
+| none | 38.2% → 38.2% | +0.0 (−7.0 to +7.0) | 1.000 | 26.6% → 21.3% | 36.0k → 98.4k |
+| full | 46.8% → 47.8% | +1.1 (−5.9 to +8.6) | 0.888 | 10.1% → 14.2% | 78.1k → 106.5k |
+| graph | 48.9% → **36.6%** | **−12.4 (−19.9 to −5.4)** | **0.002** | 31.1% → 22.4% | 39.3k → 97.6k |
+
+- **All four pre-registered predictions were wrong.** The schema changed nothing for `none` and `full`, and made
+  `graph` significantly worse (−12.4 points, p = 0.002).
+- **With the schema, full replay beats graph memory** by 11.3 points (95% CI −19.4 to −2.7, p = 0.011). In the main
+  run they tied. Across the two runs: graph memory ties full replay at best, and there is no evidence it is more
+  accurate. Its token advantage (about half the input tokens) mostly vanishes once the schema is in the prompt.
+- **Why:** 89% of the remaining "unknown column" errors are columns that exist on a *different* table (e.g. `AlertId`
+  is on `AlertInfo`, not `SecurityAlert`). The model's problem is picking the right table, not remembering names.
+- Single run per question; why graph got worse is not established.
 
 ## Quickstart
 

@@ -107,6 +107,11 @@ Modes from the schema run appear as `none+schema`, `full+schema`, `graph+schema`
   schema knowledge that every mode now has.
 - **P4:** the gap between `graph` and `full` stays inside noise.
 
+**Result (run 2026-10-11/12, 558 investigations, ~6.5 h): all four predictions were wrong.** SQL failures fell only to
+21% / 14% / 22% (full's rose); accuracy was unchanged for none (+0.0) and full (+1.1), and graph fell 12.4 points
+(95% CI −19.9 to −5.4, p = 0.002); with the schema, full beats graph by 11.3 points (p = 0.011). 89% of the remaining
+unknown-column errors were real columns used on the wrong table. Full write-up: [ERROR_ANALYSIS.md](ERROR_ANALYSIS.md).
+
 **Decision rules:**
 - "Schema errors were a bottleneck" only if the schema effect's paired 95% CI excludes 0 for at least one mode.
 - "Graph beats full once both know the schema" only if `graph+schema` vs `full+schema` has a paired CI that

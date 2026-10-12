@@ -16,3 +16,4 @@ build/
 results/excytin/pilot.jsonl
 results/excytin/smoke.jsonl
 results/excytin/main.jsonl
+results/excytin/schema.jsonl

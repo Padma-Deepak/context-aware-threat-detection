@@ -32,6 +32,7 @@ replay on accuracy at about half the input tokens.
 | Analyst UI, CLI, MCP server, Docker | ✅ Built; UI checked in a browser |
 | **Pilot benchmark** (5 per incident, 4 memory modes) | ✅ Run (too small to separate modes) |
 | **Main benchmark** (25 per incident, 3 modes, 558 runs) | ✅ Run: memory helps; graph ties full replay |
+| **Schema experiment** (same runs with the schema in the prompt) | ✅ Run: hypothesis rejected; graph got worse |
 | Prompt-injection run, triage on the alert queue | ⏳ Built, not run |
 | Commercial-model check, public demo | ⏳ Not done |
 
@@ -56,10 +57,8 @@ what earlier ones found.
   and cites slightly worse (83% vs 90% valid citations; 8% of graph runs never called submit vs 0% for full).
 - Late in a chain, `none` fell to 26% while `full` held at 45% and `graph` at 50%; question order is a
   confound, so this is suggestive only.
-- Results vary a lot by incident (graph: 73% on #38, 16% on #55, 32% on #166), one run per question.
-  [`ERROR_ANALYSIS.md`](ERROR_ANALYSIS.md): the likely cause is SQL schema errors (31% of graph's queries fail,
-  mostly on columns that don't exist, vs 10% for full replay), which exhaust the step limit. A correlation, not
-  yet a tested cause.
+- Results vary a lot by incident (graph: 73% on #38, 16% on #55, 32% on #166), one run per question. Transcripts
+  suggested SQL schema errors as the cause; the follow-up experiment below tested that and **rejected** it.
 - **Conformal escalation still certified nothing.** Confidence carries some signal (answers under 90 are right
   16% of the time, 90 or more 57%, 95 or more 66%) but nowhere near the reliability a 5-10% error target needs,
   so every alert would escalate. The guarantee works; this confidence signal is too weak.
@@ -68,6 +67,29 @@ what earlier ones found.
 - A smaller 5-per-incident pilot (`results/excytin/pilot_report.md`) pointed the same way.
 
 Reports: `results/excytin/main_report.md`. Raw runs (without transcripts): `results/excytin/main_slim.jsonl`.
+
+## Follow-up: does giving the agent the database schema help? (No)
+
+The transcripts showed 31% of graph's SQL queries failing, mostly on "unknown column", versus 10% for full replay, so
+I hypothesised that schema guessing was the bottleneck and wrote down predictions before running a test. Same 558
+questions and settings, but every table's exact column names in the prompt.
+
+| Mode | Accuracy without → with schema | Change with schema (95% CI) | McNemar p | SQL queries failing | Input tokens |
+|---|---|---|---|---|---|
+| none | 38.2% → 38.2% | +0.0 (−7.0 to +7.0) | 1.000 | 26.6% → 21.3% | 36.0k → 98.4k |
+| full | 46.8% → 47.8% | +1.1 (−5.9 to +8.6) | 0.888 | 10.1% → 14.2% | 78.1k → 106.5k |
+| graph | 48.9% → **36.6%** | **−12.4 (−19.9 to −5.4)** | **0.002** | 31.1% → 22.4% | 39.3k → 97.6k |
+
+- **All four pre-registered predictions were wrong.** The schema changed nothing for `none` and `full`, and made `graph`
+  significantly worse (−12.4 points, p = 0.002).
+- **With the schema, full replay beats graph memory** by 11.3 points (95% CI −19.4 to −2.7, p = 0.011); in the main
+  run they tied. Graph memory therefore ties full replay at best, and its token advantage mostly disappears once the
+  schema is in the prompt (97.6k vs 106.5k input tokens).
+- **Why the schema did not help:** 89% of the remaining "unknown column" errors are columns that exist on another
+  table (`AlertId` is on `AlertInfo`, not `SecurityAlert`). The model's trouble is choosing the right table.
+- Why graph got worse is not established (single run per question; per-incident results are noisy).
+
+Details: [`ERROR_ANALYSIS.md`](ERROR_ANALYSIS.md); report `results/excytin/schema_report.md`.
 
 ## Architecture
 
@@ -151,7 +173,7 @@ streamlit run triage/ui/app.py
 ```
 
 ## Limitations
-- Graph memory is **not** shown to be more accurate than simple full replay (a tie, p = 0.71); its advantage is half the input tokens, at twice the time per question.
+- Graph memory is **not** shown to be more accurate than simple full replay: a tie in the main run (p = 0.71) and a loss when both get the schema (−11.3 points, p = 0.011). Its advantage was about half the input tokens, which mostly vanishes with the schema.
 - Escalation is currently 100% because the model's self-reported confidence is unusable.
 - One small local model; no commercial-model result.
 - ExCyTIn alerts are almost all true positives from simulated attacks in one tenant, unlike a real SOC.
@@ -163,8 +185,9 @@ streamlit run triage/ui/app.py
 2. Prompt-injection run and triage on the alert queue; review a few hundred alerts so false-positive rate is
    measurable.
 3. Small commercial-model check under the spend cap.
-4. Test giving every mode the schema up front (see `ERROR_ANALYSIS.md`) and store successful queries as memory;
-   look into why 8% of graph runs never submit.
+4. Try a compact "which table holds what" guide or few-shot working queries (the schema dump did not help), let graph
+   memory store successful queries, and look into why graph got worse with the schema and why 8-12% of its runs
+   never submit.
 5. Deploy a read-only demo from a snapshot ([`DEPLOY.md`](DEPLOY.md)); record the README GIF.
 
 ## Origin: the v1 experiment (synthetic data, context compression)
